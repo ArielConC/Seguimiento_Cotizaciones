@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Quotation Follow-up | NT Tool</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20260917.7">
+</head>
+<body>
+  <div id="app" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-mark">NT</div><div><strong>NT TOOL</strong><span data-i18n="sales_followup">Sales follow-up</span></div></div>
+      <nav>
+        <button class="nav-item active" data-view="dashboard">⌂ <span data-i18n="dashboard">Dashboard</span></button>
+        <button class="nav-item" data-view="pending">◎ <span data-i18n="priorities">SABC Priorities</span></button>
+        <button class="nav-item" data-view="managed">↗ <span data-i18n="managed">Managed</span></button>
+        <button class="nav-item" data-view="safe">◆ <span data-i18n="safe">Safe</span></button>
+        <button class="nav-item standard-only" data-view="po_missing">! <span data-i18n="po_missing">PO Date Missing</span></button>
+        <button class="nav-item" data-view="po">✓ <span>PO</span></button>
+        <button class="nav-item" data-view="lost">× <span data-i18n="lost">Lost</span></button>
+        <button class="nav-item special-only" data-view="archive">▣ <span data-i18n="archive">Archive</span></button>
+        <button class="nav-item standard-only" data-view="historical">◷ <span data-i18n="historical">Historical</span></button>
+        <button class="nav-item" data-view="reports">▥ <span data-i18n="reports">Reports</span></button>
+        <button class="nav-item admin-only" data-view="users">⚙ <span data-i18n="users">Users</span></button>
+      </nav>
+      <div id="priority-legend" class="priority-legend"></div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div class="topbar-title"><button id="sidebar-toggle" class="icon-button sidebar-toggle" type="button" aria-label="Hide navigation" aria-expanded="true">☰</button><div><p class="eyebrow" data-i18n="quotation_management">QUOTATION MANAGEMENT</p><h1 id="page-title">Dashboard</h1></div></div>
+        <div class="topbar-actions">
+          <button id="system-button" class="button ghost">Workspace</button>
+          <label><span data-i18n="agent">NT Tool agent</span><select id="global-agent"><option value="">All agents</option></select></label>
+          <label><span data-i18n="language">Language</span><select id="language-select"><option value="en">English</option><option value="es">Español</option></select></label>
+          <button id="upload-button" class="button primary" data-i18n="upload_excel">Upload Excel</button>
+          <div class="user-menu"><strong id="user-name"></strong></div>
+          <button id="password-button" class="button ghost" data-i18n="change_password">Change password</button>
+          <button id="logout-button" class="button ghost" data-i18n="logout">Log out</button>
+        </div>
+      </header>
+
+      <div id="pending-total-banner" class="financial-banners"><div class="pending-total-banner"><span data-i18n="pending_total">Pending quotation total</span><strong id="global-pending-total">—</strong></div><div class="pending-total-banner po-total-banner"><span data-i18n="po_total">PO total</span><strong id="global-po-total">—</strong></div></div>
+      <div id="toast" class="toast" role="status"></div>
+
+      <section id="view-dashboard" class="view active">
+        <div id="kpis" class="kpi-grid"></div>
+        <div id="followup-alert"></div>
+        <div class="dashboard-grid users-layout">
+          <article class="panel"><div class="panel-heading"><div><p class="eyebrow" data-i18n="in_followup">IN FOLLOW-UP</p><h2 data-i18n="priority_distribution">Priority distribution</h2></div></div><div id="priority-summary" class="priority-summary"></div><div id="pipeline-summary" class="pipeline-summary"></div></article>
+          <article class="panel"><div class="panel-heading"><div><p class="eyebrow" data-i18n="daily_report">DAILY REPORT</p><h2 data-i18n="today_activity">Today's activity</h2></div><button id="dashboard-report" class="button report-button" data-i18n="generate_daily">Generate daily report</button></div><div id="backup-status" class="backup-status"></div></article>
+        </div>
+        <article class="panel"><div class="panel-heading"><div><p class="eyebrow" data-i18n="attention">ATTENTION</p><h2 data-i18n="priority_quotes">Priority quotations</h2></div><button class="text-button" data-go="pending" data-i18n="view_all">View all</button></div><div id="dashboard-table" class="table-wrap"></div></article>
+      </section>
+
+      <section id="view-list" class="view">
+        <article class="panel">
+          <div class="filters">
+            <label><span data-i18n="search">Search</span><input id="quote-search" type="search" placeholder="Quotation, customer, End User, or distributor"></label>
+            <label><span data-i18n="priority">Priority</span><select id="priority-filter"><option value="">All</option><option>S</option><option>A</option><option>B</option><option>C</option></select></label>
+            <label id="rank-filter-wrap" class="special-only"><span>Rank</span><select id="rank-filter"><option value="">All</option></select></label>
+            <label><span data-i18n="sort_by">Sort by</span><select id="quote-order"><option value="priority">Priority: S to C</option><option value="date_desc">Date: newest first</option><option value="date_asc">Date: oldest first</option><option value="folio_desc">Quotation: highest to lowest</option><option value="folio_asc">Quotation: lowest to highest</option><option value="amount_desc">Amount: highest to lowest</option><option value="amount_asc">Amount: lowest to highest</option></select></label>
+            <div class="result-count"><strong id="quote-count">0</strong><span id="quote-total">—</span></div>
+          </div>
+          <div id="quotes-table" class="table-wrap"></div>
+        </article>
+      </section>
+
+      <section id="view-reports" class="view">
+        <article class="panel">
+          <div class="panel-heading"><div><p class="eyebrow" data-i18n="reports">REPORTS</p><h2 data-i18n="period_activity">Quotation activity by period</h2></div></div>
+          <p class="section-help" data-i18n="report_help">The report counts newly imported quotations, saved Manage reviews, status changes, losses, and PO conversions for the selected period.</p>
+          <div class="report-actions"><button class="button ghost report-preset" data-period="daily" data-i18n="daily">Daily</button><button class="button ghost report-preset" data-period="weekly" data-i18n="weekly">Weekly</button><button class="button ghost report-preset" data-period="monthly" data-i18n="monthly">Monthly</button><button class="button ghost report-preset" data-period="custom" data-i18n="custom">Custom range</button></div>
+          <div class="report-controls">
+            <label><span data-i18n="start_date">Start date</span><input id="report-start" type="date"></label>
+            <label><span data-i18n="end_date">End date</span><input id="report-end" type="date"></label>
+            <label><span data-i18n="scope">Scope</span><select id="report-scope"><option value="mine">My activity</option><option value="all">All team</option></select></label>
+            <button id="report-preview" class="button primary" data-i18n="generate_report">Generate report</button>
+            <a id="report-pdf" class="button ghost" href="#">PDF</a><a id="report-xlsx" class="button ghost" href="#">Excel</a>
+          </div>
+          <div id="report-summary"></div>
+        </article>
+      </section>
+
+      <section id="view-users" class="view">
+        <div class="dashboard-grid">
+          <article class="panel"><div class="panel-heading"><div><p class="eyebrow" data-i18n="user_admin">USER ADMINISTRATION</p><h2 data-i18n="users">Users</h2></div></div><div id="users-table" class="table-wrap"></div></article>
+          <article class="panel"><h2 data-i18n="create_user">Create user</h2><form id="user-form" class="form-stack"><label>Username<input id="new-username" required></label><label data-i18n="display_name">Display name<input id="new-display-name" required></label><label data-i18n="agent">Agent<input id="new-agent"></label><label data-i18n="temporary_password">Temporary password<input id="new-password" type="text" minlength="10" required autocomplete="off"></label><button id="generate-new-password" class="button ghost" type="button" data-i18n="generate_password">Generate temporary password</button><button class="button primary" data-i18n="create_user">Create user</button></form></article>
+        </div>
+        <article id="audit-panel" class="panel audit-only hidden"><h2 data-i18n="recent_audit">Recent audit activity</h2><div id="audit-table" class="table-wrap"></div></article>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="login-dialog" class="login-dialog">
+    <form id="login-form">
+      <div class="login-brand"><div class="brand-mark">NT</div><div><h2>Quotation Follow-up</h2><p id="login-subtitle">Sign in to continue</p></div></div>
+      <div id="bootstrap-note" class="notice hidden"></div>
+      <label id="login-user-label">Username<input id="login-username" autocomplete="username" required></label>
+      <label>Password<input id="login-password" type="password" minlength="10" autocomplete="current-password" required></label>
+      <label>Language / Idioma<select id="login-language"><option value="en">English</option><option value="es">Español</option></select></label>
+      <button class="button primary" id="login-submit">Sign in</button>
+      <p id="login-error" class="form-error"></p>
+    </form>
+  </dialog>
+
+  <dialog id="system-dialog" class="system-dialog">
+    <div class="dialog-content"><div class="dialog-heading"><div><p class="eyebrow" data-i18n="select_workspace">SELECT WORKSPACE</p><h2 data-i18n="choose_system">Choose a follow-up system</h2></div></div><div class="system-options"><button class="system-option" data-system="standard"><span class="system-icon excel">XLSX</span><strong>Follow Up Quotations</strong><small data-i18n="standard_help">USD quotations imported from the daily Excel report.</small></button><button class="system-option" data-system="special"><span class="system-icon yen">JPY</span><strong>Follow Up Special Quotations</strong><small data-i18n="special_help">Special items in JPY with percentile-based priorities.</small></button></div></div>
+  </dialog>
+
+  <dialog id="upload-dialog">
+    <form id="upload-form" class="dialog-content"><div class="dialog-heading"><div><p class="eyebrow" data-i18n="import_data">IMPORT DATA</p><h2 id="upload-title">Upload quotations</h2></div><button type="button" class="icon-button dialog-close">×</button></div><p id="upload-help" class="section-help"></p><label>Excel<input id="upload-file" type="file" accept=".xlsx" required></label><div id="import-preview" class="hidden"></div><div class="dialog-actions"><button type="button" class="button ghost dialog-close" data-i18n="cancel">Cancel</button><button id="preview-import" class="button primary" type="submit" data-i18n="preview">Preview</button><button id="confirm-import" class="button primary hidden" type="button" data-i18n="confirm_import">Confirm import</button></div></form>
+  </dialog>
+
+  <dialog id="manage-dialog">
+    <form id="manage-form" class="dialog-content"><div class="dialog-heading"><div><p class="eyebrow" data-i18n="update_followup">UPDATE FOLLOW-UP</p><h2 id="manage-title"></h2></div><button type="button" class="icon-button dialog-close">×</button></div><div id="manage-summary" class="detail-grid"></div><label data-i18n="status">Status<select id="manage-status"><option value="pending">Pending</option><option value="po">PO</option><option value="lost">Lost</option></select></label><label data-i18n="followup_method">Follow-up method<select id="manage-method" required><option value="">Select</option><option value="email">E-mail</option><option value="call">Call</option><option value="visit">Visit</option></select></label><label id="loss-wrap" class="hidden"><span data-i18n="loss_reason">Loss reason</span><select id="manage-loss"><option value="">Select</option><option>Lead Time</option><option>Over Budget</option><option>Window Shopping</option><option>Project Cancelled</option><option>Mismatch</option></select></label><section id="po-fields" class="invoice-editor hidden"><div class="invoice-editor-heading"><div><h3 data-i18n="po_invoices">PO invoices</h3><p class="section-help" data-i18n="po_invoices_help">Add every invoice that forms this PO. The total and PO date are calculated automatically.</p></div><button id="add-invoice" class="button ghost" type="button" data-i18n="add_invoice">+ Add invoice</button></div><div id="invoice-rows" class="invoice-rows"></div><div class="invoice-total"><span data-i18n="po_total">PO total</span><strong id="invoice-total-value">—</strong></div></section><label id="safe-wrap" class="check"><input id="manage-safe" type="checkbox"><span data-i18n="mark_safe">Mark as Safe</span></label><label id="manage-comment-wrap" data-i18n="new_comment">New comment<textarea id="manage-comment" rows="3" placeholder="Append a new follow-up note"></textarea></label><div><h3 data-i18n="comment_history">Comment history</h3><div id="manage-comments" class="history"></div></div><div class="dialog-actions"><button class="button primary" data-i18n="save_review">Save review</button></div></form>
+  </dialog>
+
+  <dialog id="view-dialog" class="wide-dialog"><div class="dialog-content"><div class="dialog-heading"><div><p class="eyebrow" data-i18n="operation_details">OPERATION DETAILS</p><h2 id="view-title"></h2></div><button type="button" class="icon-button dialog-close">×</button></div><div id="view-details" class="detail-grid"></div><section id="view-invoices-section" class="hidden"><h3 data-i18n="po_invoices">PO invoices</h3><div id="view-invoices" class="table-wrap"></div></section><h3 data-i18n="comment_history">Comment history</h3><div id="view-comments" class="history"></div><h3 data-i18n="audit_history">Activity history</h3><div id="view-events" class="history"></div></div></dialog>
+
+  <dialog id="user-edit-dialog"><form id="user-edit-form" class="dialog-content"><div class="dialog-heading"><div><h2 data-i18n="edit_user">Edit user</h2><p id="edit-username" class="section-help"></p></div><button type="button" class="icon-button dialog-close">×</button></div><input id="edit-user-id" type="hidden"><label data-i18n="display_name">Display name<input id="edit-name" required></label><label data-i18n="agent">Agent<input id="edit-agent"></label><label class="check"><input id="edit-active" type="checkbox"><span data-i18n="active">Active</span></label><label data-i18n="temporary_password">Temporary password<input id="edit-password" type="text" minlength="10" placeholder="Leave blank to keep current password" autocomplete="off"></label><button id="generate-edit-password" class="button ghost" type="button" data-i18n="generate_password">Generate temporary password</button><p id="temporary-password-help" class="section-help" data-i18n="temporary_password_help">Copy the password before saving. The user will be asked to replace it at the next login.</p><button class="button primary" data-i18n="save">Save</button></form></dialog>
+  <dialog id="password-dialog"><form id="password-form" class="dialog-content"><div class="dialog-heading"><h2 data-i18n="change_password">Change password</h2><button type="button" class="icon-button dialog-close">×</button></div><p id="password-notice" class="section-help"></p><label data-i18n="current_password">Current password<input id="current-password" type="password" required></label><label data-i18n="new_password">New password<input id="new-own-password" type="password" minlength="10" required></label><button class="button primary" data-i18n="change_password">Change password</button></form></dialog>
+  <script src="/static/app.js?v=20260917.7" defer></script>
+</body>
+</html>

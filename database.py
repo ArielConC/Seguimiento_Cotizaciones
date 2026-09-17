@@ -1,0 +1,720 @@
+from __future__ import annotations
+
+import os
+import re
+import sqlite3
+from datetime import date, datetime
+from decimal import Decimal
+from io import BytesIO
+from pathlib import Path
+from typing import Any
+
+from openpyxl import load_workbook
+
+import po_invoices
+from parser import QuoteData, priority_for_total
+
+
+APP_DIR = Path(__file__).resolve().parent
+
+
+def _resolve_data_dir() -> Path:
+    configured = os.environ.get("NT_QUOTE_DATA_DIR", "").strip()
+    railway_volume = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
+    if configured:
+        return Path(configured)
+    if railway_volume:
+        return Path(railway_volume)
+    if os.environ.get("RAILWAY_ENVIRONMENT_ID"):
+        raise RuntimeError(
+            "Persistent storage is required on Railway. Attach a volume at /data "
+            "or set NT_QUOTE_DATA_DIR before starting the application."
+        )
+    return APP_DIR / "data"
+
+
+DATA_DIR = _resolve_data_dir()
+DB_PATH = DATA_DIR / "cotizaciones.db"
+IMPORT_DIR = DATA_DIR / "imports"
+DEFAULT_QUOTATION_ROOT = r"C:\Users\fcoar\Dropbox\Quotation"
+PARSER_VERSION = 3
+LOSS_REASONS = ("Lead Time", "Over Budget", "Window Shopping", "Project Cancelled", "Mismatch")
+
+
+class ClosingConnection(sqlite3.Connection):
+    def __exit__(self, exc_type, exc_value, traceback) -> bool:
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
+def now_iso() -> str:
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def connect() -> sqlite3.Connection:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(DB_PATH, timeout=30, factory=ClosingConnection)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA journal_mode = WAL")
+    connection.execute("PRAGMA busy_timeout = 30000")
+    return connection
+
+
+def _ensure_columns(db: sqlite3.Connection, table: str, definitions: dict[str, str]) -> None:
+    present = {row["name"] for row in db.execute(f"PRAGMA table_info({table})").fetchall()}
+    for name, definition in definitions.items():
+        if name not in present:
+            db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+
+
+def initialize() -> None:
+    with connect() as db:
+        db.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
+            CREATE TABLE IF NOT EXISTS quotes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                folio TEXT NOT NULL UNIQUE,
+                quote_date TEXT NOT NULL,
+                receptor TEXT NOT NULL,
+                distributor_agent TEXT NOT NULL DEFAULT '',
+                nt_agent TEXT NOT NULL DEFAULT '',
+                customer_order TEXT NOT NULL DEFAULT '',
+                total_usd REAL NOT NULL,
+                currency TEXT NOT NULL DEFAULT 'USD',
+                priority TEXT NOT NULL CHECK (priority IN ('S', 'A', 'B', 'C')),
+                status TEXT NOT NULL CHECK (status IN ('pending', 'po', 'lost')),
+                follow_up_type TEXT NOT NULL DEFAULT '',
+                is_safe INTEGER NOT NULL DEFAULT 0,
+                po_total_usd REAL,
+                comment TEXT NOT NULL DEFAULT '',
+                loss_reason TEXT NOT NULL DEFAULT '',
+                source_path TEXT NOT NULL,
+                source_mtime REAL NOT NULL,
+                discovered_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                status_changed_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS quote_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+                event_type TEXT NOT NULL,
+                from_status TEXT,
+                to_status TEXT,
+                follow_up_type TEXT NOT NULL DEFAULT '',
+                note TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS quote_comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+                body TEXT NOT NULL,
+                user_id INTEGER,
+                user_name TEXT NOT NULL DEFAULT 'Historical data',
+                created_at TEXT NOT NULL,
+                is_legacy INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS quote_invoices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                quote_id INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+                invoice_date TEXT NOT NULL,
+                invoice_series TEXT NOT NULL,
+                invoice_number TEXT NOT NULL,
+                amount REAL NOT NULL CHECK(amount>0),
+                currency TEXT NOT NULL DEFAULT 'USD',
+                created_by_user_id INTEGER,
+                created_by_name TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                active INTEGER NOT NULL DEFAULT 1,
+                is_legacy INTEGER NOT NULL DEFAULT 0,
+                superseded_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS imports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token TEXT NOT NULL UNIQUE,
+                workspace TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                stored_path TEXT NOT NULL,
+                file_hash TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'preview',
+                rows_seen INTEGER NOT NULL DEFAULT 0,
+                inserted INTEGER NOT NULL DEFAULT 0,
+                updated INTEGER NOT NULL DEFAULT 0,
+                duplicates INTEGER NOT NULL DEFAULT 0,
+                archived INTEGER NOT NULL DEFAULT 0,
+                errors INTEGER NOT NULL DEFAULT 0,
+                error_detail TEXT NOT NULL DEFAULT '',
+                preview_json TEXT NOT NULL DEFAULT '{}',
+                user_id INTEGER,
+                user_name TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                confirmed_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS daily_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                note_date TEXT NOT NULL,
+                note TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS scan_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, started_at TEXT NOT NULL, finished_at TEXT,
+                files_seen INTEGER NOT NULL DEFAULT 0, inserted INTEGER NOT NULL DEFAULT 0,
+                updated INTEGER NOT NULL DEFAULT 0, errors INTEGER NOT NULL DEFAULT 0,
+                error_detail TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE IF NOT EXISTS processed_files (
+                source_path TEXT PRIMARY KEY, source_mtime REAL NOT NULL, parser_version INTEGER NOT NULL,
+                outcome TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', processed_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status);
+            CREATE INDEX IF NOT EXISTS idx_quotes_agent ON quotes(nt_agent);
+            CREATE INDEX IF NOT EXISTS idx_quotes_date ON quotes(quote_date);
+            CREATE INDEX IF NOT EXISTS idx_events_created ON quote_events(created_at);
+            CREATE INDEX IF NOT EXISTS idx_quote_invoices_active ON quote_invoices(quote_id,active);
+            CREATE INDEX IF NOT EXISTS idx_imports_workspace ON imports(workspace, created_at);
+            """
+        )
+        _ensure_columns(db, "quotes", {
+            "follow_up_type": "TEXT NOT NULL DEFAULT ''", "is_safe": "INTEGER NOT NULL DEFAULT 0",
+            "po_total_usd": "REAL", "series": "TEXT NOT NULL DEFAULT ''",
+            "folio_number": "TEXT NOT NULL DEFAULT ''", "distributor_company": "TEXT NOT NULL DEFAULT ''",
+            "end_user": "TEXT NOT NULL DEFAULT ''", "net_total_usd": "REAL", "po_date": "TEXT",
+            "po_detected": "INTEGER NOT NULL DEFAULT 0", "source_kind": "TEXT NOT NULL DEFAULT 'pdf'",
+            "is_historical": "INTEGER NOT NULL DEFAULT 0", "is_archived": "INTEGER NOT NULL DEFAULT 0",
+            "import_id": "INTEGER", "created_by_user_id": "INTEGER",
+            "created_by_name": "TEXT NOT NULL DEFAULT ''", "last_reviewed_at": "TEXT",
+            "last_reviewed_by": "INTEGER",
+        })
+        _ensure_columns(db, "quote_events", {
+            "follow_up_type": "TEXT NOT NULL DEFAULT ''", "user_id": "INTEGER",
+            "user_name": "TEXT NOT NULL DEFAULT 'Historical data'",
+        })
+        db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('quotation_root',?)", (DEFAULT_QUOTATION_ROOT,))
+        db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('months_back','3')")
+        db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('scan_interval_seconds','300')")
+        db.execute(
+            """
+            UPDATE quotes SET
+                series=CASE WHEN series='' AND instr(folio,'-')>0 THEN substr(folio,1,instr(folio,'-')-1) ELSE series END,
+                folio_number=CASE WHEN folio_number='' AND instr(folio,'-')>0 THEN substr(folio,instr(folio,'-')+1) ELSE folio_number END,
+                end_user=CASE WHEN end_user='' THEN receptor ELSE end_user END,
+                source_kind=COALESCE(NULLIF(source_kind,''),'pdf'),
+                priority=CASE WHEN total_usd<=500 THEN 'C' WHEN total_usd<=1000 THEN 'B' WHEN total_usd<=5000 THEN 'A' ELSE 'S' END
+            """
+        )
+        po_invoices.migrate_legacy(db,"quotes","quote_invoices","quote_events","USD")
+        db.execute("UPDATE quotes SET po_detected=1 WHERE trim(customer_order)<>''")
+        db.execute("UPDATE quotes SET status='pending' WHERE status='po' AND po_date IS NULL")
+        db.execute(
+            """
+            INSERT INTO quote_comments(quote_id,body,user_name,created_at,is_legacy)
+            SELECT q.id,q.comment,'Historical data',q.updated_at,1 FROM quotes q
+            WHERE trim(q.comment)<>'' AND NOT EXISTS(
+                SELECT 1 FROM quote_comments c WHERE c.quote_id=q.id AND c.is_legacy=1
+            )
+            """
+        )
+
+
+def get_setting(key: str, default: str = "") -> str:
+    with connect() as db:
+        row = db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def set_setting(key: str, value: str) -> None:
+    with connect() as db:
+        db.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
+
+
+def rows_to_dicts(rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
+    return [dict(row) for row in rows]
+
+
+def _actor(actor: dict[str, Any] | None) -> tuple[int | None, str]:
+    return (int(actor["id"]) if actor and actor.get("id") else None, str(actor.get("display_name") if actor else "System"))
+
+
+def _parse_date(value: Any) -> date:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value or "").strip()
+    for pattern in ("%Y-%m-%d", "%Y/%m/%d", "%d/%m/%Y", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(text, pattern).date()
+        except ValueError:
+            continue
+    raise ValueError(f"Unrecognized date: {text or 'blank'}")
+
+
+def _number(value: Any, label: str, required: bool = True) -> float | None:
+    if value in (None, "") and not required:
+        return None
+    try:
+        result = float(str(value).replace(",", "").replace("$", "").strip())
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be numeric") from exc
+    if result < 0:
+        raise ValueError(f"{label} cannot be negative")
+    return result
+
+
+def _cell_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+
+def _normalize_folio(series: str, number: str) -> tuple[str, str, str]:
+    series = re.sub(r"\s+", "", series.upper())
+    number = _cell_text(number).strip()
+    number = re.sub(rf"^{re.escape(series)}[-_ ]*", "", number, flags=re.I) if series else number
+    if not series or not number:
+        raise ValueError("Series and folio are required")
+    return series, number, f"{series}-{number}"
+
+
+def parse_workbook(content: bytes, filename: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if not filename.lower().endswith(".xlsx"):
+        raise ValueError("Upload an .xlsx Excel file")
+    if len(content) > 25 * 1024 * 1024:
+        raise ValueError("The Excel file cannot exceed 25 MB")
+    try:
+        workbook = load_workbook(BytesIO(content), data_only=True, read_only=True)
+    except Exception as exc:
+        raise ValueError("The Excel workbook could not be read") from exc
+    worksheet = workbook.active
+    worksheet_rows = list(worksheet.iter_rows(min_col=1, max_col=11, values_only=True))
+    header_row = None
+    for row_number, row_values in enumerate(worksheet_rows[:15], start=1):
+        a = _cell_text(row_values[0]).lower()
+        b = _cell_text(row_values[1]).lower()
+        c = _cell_text(row_values[2]).lower()
+        if a in {"fecha", "date"} and b in {"serie", "series"} and c in {"folio", "quote no.", "quote no"}:
+            header_row = row_number
+            break
+    if header_row is None:
+        raise ValueError("Required headers were not found in columns A, B, and C")
+    records: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+    for row_number, row_values in enumerate(worksheet_rows[header_row:], start=header_row + 1):
+        values = list(row_values)
+        if not any(value not in (None, "") for value in values):
+            continue
+        if values[1] in (None, "") or values[2] in (None, ""):
+            continue
+        try:
+            series, folio_number, folio = _normalize_folio(_cell_text(values[1]), _cell_text(values[2]))
+            quote_date = _parse_date(values[0])
+            total = float(_number(values[4], "Total with taxes") or 0)
+            net_total = _number(values[10], "Net total", required=False)
+            customer_order = _cell_text(values[8])
+            records.append({
+                "series": series, "folio_number": folio_number, "folio": folio,
+                "quote_date": quote_date.isoformat(), "distributor_company": _cell_text(values[3]),
+                "end_user": _cell_text(values[5]), "receptor": _cell_text(values[5]) or _cell_text(values[3]),
+                "distributor_agent": _cell_text(values[6]), "customer_order": customer_order,
+                "po_detected": int(bool(customer_order)), "nt_agent": _cell_text(values[9]) or "Unassigned",
+                "total_usd": total, "net_total_usd": net_total, "currency": "USD",
+                "priority": priority_for_total(Decimal(str(total))), "source_row": row_number,
+            })
+        except Exception as exc:
+            errors.append({"row": row_number, "error": str(exc)})
+    if not records and not errors:
+        raise ValueError("The workbook does not contain quotation rows")
+    return records, errors
+
+
+def preview_workbook(content: bytes, filename: str) -> dict[str, Any]:
+    records, errors = parse_workbook(content, filename)
+    unique: dict[str, dict[str, Any]] = {}
+    duplicates = 0
+    for record in records:
+        if record["folio"] in unique:
+            duplicates += 1
+        unique[record["folio"]] = record
+    with connect() as db:
+        existing = {row["folio"] for row in db.execute(
+            f"SELECT folio FROM quotes WHERE folio IN ({','.join('?' for _ in unique)})", tuple(unique)
+        ).fetchall()} if unique else set()
+    return {
+        "rows_seen": len(records), "valid": len(unique), "new": len(set(unique) - existing),
+        "updated": len(set(unique) & existing), "duplicates": duplicates, "archived": 0,
+        "errors": len(errors), "error_detail": errors[:20], "sample": list(unique.values())[:8],
+    }
+
+
+def import_workbook(content: bytes, filename: str, actor: dict[str, Any] | None = None, import_id: int | None = None) -> dict[str, Any]:
+    records, errors = parse_workbook(content, filename)
+    unique: dict[str, dict[str, Any]] = {}
+    duplicates = 0
+    for record in records:
+        if record["folio"] in unique:
+            duplicates += 1
+        unique[record["folio"]] = record
+    timestamp = now_iso()
+    actor_id, actor_name = _actor(actor)
+    inserted = updated = 0
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        for record in unique.values():
+            current = db.execute("SELECT * FROM quotes WHERE folio=?", (record["folio"],)).fetchone()
+            if current:
+                db.execute(
+                    """
+                    UPDATE quotes SET series=?,folio_number=?,quote_date=?,receptor=?,distributor_company=?,end_user=?,
+                        distributor_agent=?,nt_agent=?,customer_order=?,po_detected=?,total_usd=?,net_total_usd=?,
+                        currency='USD',priority=?,source_path=?,source_mtime=0,source_kind='excel',is_historical=0,
+                        is_archived=0,import_id=? WHERE id=?
+                    """,
+                    (record["series"],record["folio_number"],record["quote_date"],record["receptor"],
+                     record["distributor_company"],record["end_user"],record["distributor_agent"],record["nt_agent"],
+                     record["customer_order"],record["po_detected"],record["total_usd"],record["net_total_usd"],
+                     record["priority"],filename,import_id,current["id"]),
+                )
+                updated += 1
+            else:
+                cursor = db.execute(
+                    """
+                    INSERT INTO quotes(folio,series,folio_number,quote_date,receptor,distributor_company,end_user,
+                        distributor_agent,nt_agent,customer_order,po_detected,total_usd,net_total_usd,currency,
+                        priority,status,source_path,source_mtime,source_kind,import_id,created_by_user_id,created_by_name,
+                        discovered_at,updated_at,status_changed_at)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'USD',?,'pending',?,0,'excel',?,?,?,?,?,?)
+                    """,
+                    (record["folio"],record["series"],record["folio_number"],record["quote_date"],record["receptor"],
+                     record["distributor_company"],record["end_user"],record["distributor_agent"],record["nt_agent"],
+                     record["customer_order"],record["po_detected"],record["total_usd"],record["net_total_usd"],
+                     record["priority"],filename,import_id,actor_id,actor_name,timestamp,timestamp,timestamp),
+                )
+                db.execute(
+                    "INSERT INTO quote_events(quote_id,event_type,to_status,note,user_id,user_name,created_at) VALUES(?,'created','pending','Imported from Excel',?,?,?)",
+                    (cursor.lastrowid, actor_id, actor_name, timestamp),
+                )
+                inserted += 1
+        db.execute("UPDATE quotes SET is_historical=1 WHERE source_kind='pdf'")
+    return {"rows_seen":len(records),"inserted":inserted,"updated":updated,"duplicates":duplicates,
+            "archived":0,"errors":len(errors),"error_detail":errors[:20]}
+
+
+def upsert_quote(data: QuoteData, source_mtime: float) -> str:
+    """Legacy PDF import retained only for migration compatibility."""
+    timestamp = now_iso()
+    parts = data.folio.replace("_", "-").split("-", 1)
+    series, number, folio = _normalize_folio(parts[0], parts[-1])
+    priority = priority_for_total(Decimal(data.total_usd))
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        current = db.execute("SELECT * FROM quotes WHERE folio=?", (folio,)).fetchone()
+        if not current:
+            cursor = db.execute(
+                """
+                INSERT INTO quotes(folio,series,folio_number,quote_date,receptor,end_user,distributor_agent,nt_agent,
+                    customer_order,po_detected,total_usd,currency,priority,status,source_path,source_mtime,source_kind,
+                    discovered_at,updated_at,status_changed_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,'USD',?,'pending',?,?,'pdf',?,?,?)
+                """,
+                (folio,series,number,data.quote_date.isoformat(),data.receptor,data.receptor,data.distributor_agent,
+                 data.nt_agent,data.customer_order,int(bool(data.customer_order)),float(data.total_usd),priority,
+                 data.source_path,source_mtime,timestamp,timestamp,timestamp),
+            )
+            db.execute("INSERT INTO quote_events(quote_id,event_type,to_status,note,created_at) VALUES(?,'created','pending','Historical PDF import',?)", (cursor.lastrowid,timestamp))
+            return "inserted"
+        if source_mtime < float(current["source_mtime"]):
+            return "skipped_duplicate"
+        db.execute(
+            """UPDATE quotes SET quote_date=?,receptor=?,end_user=?,distributor_agent=?,nt_agent=?,customer_order=?,
+            po_detected=?,total_usd=?,priority=?,source_path=?,source_mtime=? WHERE id=?""",
+            (data.quote_date.isoformat(),data.receptor,data.receptor,data.distributor_agent,data.nt_agent,data.customer_order,
+             int(bool(data.customer_order)),float(data.total_usd),priority,data.source_path,source_mtime,current["id"]),
+        )
+        return "updated"
+
+
+def source_is_current(source_path: str, source_mtime: float) -> bool:
+    with connect() as db:
+        row = db.execute("SELECT source_mtime,parser_version FROM processed_files WHERE source_path=?", (str(Path(source_path).resolve()),)).fetchone()
+    return bool(row and int(row["parser_version"]) == PARSER_VERSION and abs(float(row["source_mtime"]) - source_mtime) < .001)
+
+
+def record_file_result(source_path: str, source_mtime: float, outcome: str, detail: str = "") -> None:
+    with connect() as db:
+        db.execute(
+            """INSERT INTO processed_files(source_path,source_mtime,parser_version,outcome,detail,processed_at)
+            VALUES(?,?,?,?,?,?) ON CONFLICT(source_path) DO UPDATE SET source_mtime=excluded.source_mtime,
+            parser_version=excluded.parser_version,outcome=excluded.outcome,detail=excluded.detail,processed_at=excluded.processed_at""",
+            (str(Path(source_path).resolve()),source_mtime,PARSER_VERSION,outcome,detail[:1000],now_iso()),
+        )
+
+
+def start_scan() -> int:
+    with connect() as db:
+        return int(db.execute("INSERT INTO scan_runs(started_at) VALUES(?)", (now_iso(),)).lastrowid)
+
+
+def finish_scan(scan_id: int, stats: dict[str, Any], errors: list[str]) -> None:
+    with connect() as db:
+        db.execute("UPDATE scan_runs SET finished_at=?,files_seen=?,inserted=?,updated=?,errors=?,error_detail=? WHERE id=?",
+                   (now_iso(),stats["files_seen"],stats["inserted"],stats["updated"],stats["errors"],"\n".join(errors[:50]),scan_id))
+
+
+def _quote_where(filters: dict[str, str], alias: str = "q") -> tuple[list[str], list[Any]]:
+    if filters.get("archive") == "1":
+        clauses = [f"{alias}.is_archived=1"]
+    else:
+        clauses = [f"{alias}.is_archived=0"]
+        clauses.append(f"{alias}.is_historical={'1' if filters.get('historical') == '1' else '0'}")
+    values: list[Any] = []
+    if filters.get("status"):
+        clauses.append(f"{alias}.status=?"); values.append(filters["status"])
+    if filters.get("agent"):
+        clauses.append(f"{alias}.nt_agent=?"); values.append(filters["agent"])
+    if filters.get("priority"):
+        clauses.append(f"{alias}.priority=?"); values.append(filters["priority"])
+    if filters.get("safe") in {"0", "1"}:
+        clauses.append(f"{alias}.is_safe=?"); values.append(int(filters["safe"]))
+    if filters.get("po_missing") == "1":
+        clauses.append(f"{alias}.po_detected=1 AND {alias}.po_date IS NULL AND {alias}.status='pending'")
+    if filters.get("search"):
+        needle = f"%{filters['search']}%"
+        clauses.append(f"({alias}.folio LIKE ? OR {alias}.distributor_company LIKE ? OR {alias}.end_user LIKE ? OR {alias}.receptor LIKE ? OR {alias}.distributor_agent LIKE ? OR {alias}.customer_order LIKE ?)")
+        values.extend([needle] * 6)
+    return clauses, values
+
+
+def list_quotes(filters: dict[str, str]) -> list[dict[str, Any]]:
+    clauses, values = _quote_where(filters)
+    n = "CAST(q.folio_number AS INTEGER)"
+    orders = {
+        "priority": "CASE q.priority WHEN 'S' THEN 1 WHEN 'A' THEN 2 WHEN 'B' THEN 3 ELSE 4 END,q.total_usd DESC",
+        "date_desc": f"q.quote_date DESC,{n} DESC", "date_asc": f"q.quote_date ASC,{n} ASC",
+        "folio_desc": f"{n} DESC,q.quote_date DESC", "folio_asc": f"{n} ASC,q.quote_date ASC",
+        "amount_desc": "q.total_usd DESC,q.quote_date DESC", "amount_asc": "q.total_usd ASC,q.quote_date ASC",
+    }
+    order = orders.get(filters.get("order", "priority"), orders["priority"])
+    with connect() as db:
+        rows = db.execute(f"SELECT q.* FROM quotes q WHERE {' AND '.join(clauses)} ORDER BY {order}", values).fetchall()
+    return rows_to_dicts(rows)
+
+
+def list_managed_quotes(filters: dict[str, str] | None = None) -> list[dict[str, Any]]:
+    filters = filters or {}
+    clauses, values = _quote_where(filters)
+    clauses.append("q.last_reviewed_at IS NOT NULL")
+    if filters.get("overdue") == "1":
+        clauses.append("q.status='pending' AND q.is_safe=0 AND julianday('now')-julianday(q.last_reviewed_at)>15")
+    orders = {"oldest_activity":"q.last_reviewed_at ASC","newest_activity":"q.last_reviewed_at DESC",
+              "folio_desc":"CAST(q.folio_number AS INTEGER) DESC","folio_asc":"CAST(q.folio_number AS INTEGER) ASC"}
+    order = orders.get(filters.get("order", "oldest_activity"), orders["oldest_activity"])
+    with connect() as db:
+        rows = db.execute(
+            f"""SELECT q.*,MAX(0,CAST(julianday('now')-julianday(q.last_reviewed_at) AS INTEGER)) AS days_since_activity,
+            CASE WHEN q.status='pending' AND q.is_safe=0 AND julianday('now')-julianday(q.last_reviewed_at)>15 THEN 1 ELSE 0 END AS overdue
+            FROM quotes q WHERE {' AND '.join(clauses)} ORDER BY {order}""", values).fetchall()
+    return rows_to_dicts(rows)
+
+
+def get_quote(quote_id: int) -> dict[str, Any]:
+    with connect() as db:
+        row = db.execute("SELECT * FROM quotes WHERE id=?", (quote_id,)).fetchone()
+        if not row:
+            raise KeyError("Quotation not found")
+        comments = rows_to_dicts(db.execute("SELECT * FROM quote_comments WHERE quote_id=? ORDER BY created_at,id", (quote_id,)).fetchall())
+        events = rows_to_dicts(db.execute("SELECT * FROM quote_events WHERE quote_id=? ORDER BY created_at,id", (quote_id,)).fetchall())
+        invoices = po_invoices.active(db,"quote_invoices",quote_id)
+    result = dict(row); result["comments"] = comments; result["events"] = events; result["invoices"] = invoices
+    result["read_only"] = bool(result["is_historical"])
+    return result
+
+
+def update_quote(quote_id: int, status: str, comment: str, loss_reason: str, follow_up_type: str,
+                 is_safe: bool, po_total_usd: float | None, po_date: str | None = None,
+                 actor: dict[str, Any] | None = None, invoices: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    if status not in {"pending", "po", "lost"}:
+        raise ValueError("Invalid status")
+    if follow_up_type not in {"email", "call", "visit"}:
+        raise ValueError("Select a follow-up method: E-mail, Call, or Visit")
+    loss_reason = loss_reason.strip()
+    if status == "lost" and loss_reason not in LOSS_REASONS:
+        raise ValueError("Select a valid loss reason")
+    if status != "lost": loss_reason = ""
+    normalized_invoices = po_invoices.normalize(
+        invoices,"USD",legacy_total=po_total_usd,legacy_date=po_date,legacy_number=f"PO-{quote_id}"
+    ) if status == "po" else []
+    if status == "po": po_total_usd,po_date=po_invoices.totals(normalized_invoices)
+    else: po_total_usd=None; po_date=None
+    comment = "" if status=="po" else comment.strip(); is_safe = bool(is_safe) and status == "pending"
+    timestamp = now_iso(); actor_id, actor_name = _actor(actor)
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        current = db.execute("SELECT * FROM quotes WHERE id=?", (quote_id,)).fetchone()
+        if not current: raise KeyError("Quotation not found")
+        if current["is_historical"]: raise ValueError("Historical quotations are read-only")
+        current_invoices=po_invoices.active(db,"quote_invoices",quote_id)
+        invoice_changed=po_invoices.signature(current_invoices)!=po_invoices.signature(normalized_invoices)
+        automatic=""
+        if status=="po" and (current["status"]!="po" or invoice_changed):
+            automatic=po_invoices.automatic_comment(normalized_invoices,"USD",str((actor or {}).get("language") or "en"),current["status"]=="po")
+        saved_comment=automatic or comment
+        changes = {"status":status != current["status"],"loss":loss_reason != current["loss_reason"],
+                   "safe":int(is_safe) != int(current["is_safe"]),"invoices":invoice_changed,
+                   "po_total":po_total_usd != current["po_total_usd"],"po_date":po_date != current["po_date"],"method":follow_up_type != current["follow_up_type"],
+                   "comment":bool(comment)}
+        if not any(changes.values()): raise ValueError("Make a change or add a comment before saving the review")
+        db.execute(
+            """UPDATE quotes SET status=?,loss_reason=?,follow_up_type=?,is_safe=?,po_total_usd=?,po_date=?,
+            po_detected=CASE WHEN ?='po' THEN 1 ELSE po_detected END,comment=CASE WHEN ?<>'' THEN ? ELSE comment END,
+            updated_at=?,last_reviewed_at=?,last_reviewed_by=?,status_changed_at=CASE WHEN status<>? THEN ? ELSE status_changed_at END
+            WHERE id=?""",
+            (status,loss_reason,follow_up_type,int(is_safe),po_total_usd,po_date,status,saved_comment,saved_comment,timestamp,timestamp,
+             actor_id,status,timestamp,quote_id),
+        )
+        if status=="po":
+            po_invoices.replace(db,"quote_invoices",quote_id,normalized_invoices,actor_id,actor_name,timestamp)
+        else:
+            po_invoices.clear(db,"quote_invoices",quote_id,timestamp)
+        db.execute(
+            """INSERT INTO quote_events(quote_id,event_type,from_status,to_status,follow_up_type,note,user_id,user_name,created_at)
+            VALUES(?,'review_saved',?,?,?,?,?,?,?)""",
+            (quote_id,current["status"],status,follow_up_type,"Review saved",actor_id,actor_name,timestamp),
+        )
+        if changes["status"]:
+            db.execute("""INSERT INTO quote_events(quote_id,event_type,from_status,to_status,follow_up_type,note,user_id,user_name,created_at)
+                       VALUES(?,'status_changed',?,?,?,?,?,?,?)""",
+                       (quote_id,current["status"],status,follow_up_type,loss_reason if status=="lost" else "",actor_id,actor_name,timestamp))
+        if saved_comment:
+            db.execute("INSERT INTO quote_comments(quote_id,body,user_id,user_name,created_at) VALUES(?,?,?,?,?)", (quote_id,saved_comment,actor_id,actor_name,timestamp))
+            event_type="po_invoices_updated" if automatic and current["status"]=="po" else "po_invoices_registered" if automatic else "comment_added"
+            db.execute("INSERT INTO quote_events(quote_id,event_type,follow_up_type,note,user_id,user_name,created_at) VALUES(?,?,?,?,?,?,?)", (quote_id,event_type,follow_up_type,saved_comment,actor_id,actor_name,timestamp))
+        if current_invoices and status!="po":
+            db.execute("INSERT INTO quote_events(quote_id,event_type,follow_up_type,note,user_id,user_name,created_at) VALUES(?,'po_invoices_cleared',?,'Active PO invoices removed after status change',?,?,?)",(quote_id,follow_up_type,actor_id,actor_name,timestamp))
+        for changed,event_type,note in (
+            (changes["safe"],"safe_changed","Marked as Safe" if is_safe else "Removed from Safe"),
+        ):
+            if changed:
+                db.execute("INSERT INTO quote_events(quote_id,event_type,follow_up_type,note,user_id,user_name,created_at) VALUES(?,?,?,?,?,?,?)", (quote_id,event_type,follow_up_type,note,actor_id,actor_name,timestamp))
+    return get_quote(quote_id)
+
+
+def dashboard(agent: str = "") -> dict[str, Any]:
+    clause = " AND nt_agent=?" if agent else ""; params: tuple[Any,...] = (agent,) if agent else ()
+    today = date.today().isoformat()
+    with connect() as db:
+        counts = dict(db.execute(
+            f"""SELECT COUNT(*) AS total,SUM(status='pending' AND is_safe=0) AS pending,
+            SUM(status='pending' AND is_safe=1) AS safe,SUM(status='po') AS po,SUM(status='lost') AS lost,
+            COALESCE(SUM(CASE WHEN status='pending' THEN total_usd ELSE 0 END),0) AS pending_value,
+            COALESCE(SUM(CASE WHEN status='po' THEN total_usd ELSE 0 END),0) AS po_quoted_value,
+            COALESCE(SUM(CASE WHEN status='po' THEN COALESCE(po_total_usd,0) ELSE 0 END),0) AS po_value
+            FROM quotes WHERE is_archived=0 AND is_historical=0 {clause}""", params).fetchone())
+        priorities = rows_to_dicts(db.execute(
+            f"SELECT priority,COUNT(*) AS count,COALESCE(SUM(total_usd),0) AS value FROM quotes WHERE status='pending' AND is_archived=0 AND is_historical=0 {clause} GROUP BY priority", params).fetchall())
+        added_today = db.execute(f"SELECT COUNT(*) AS value FROM quotes WHERE date(discovered_at)=? AND is_historical=0 {clause}", (today,*params)).fetchone()["value"]
+        po_today = db.execute(
+            f"""SELECT COUNT(DISTINCT e.quote_id) AS value FROM quote_events e
+            JOIN quotes q ON q.id=e.quote_id WHERE date(e.created_at)=? AND e.event_type='status_changed'
+            AND e.to_status='po' AND q.is_historical=0 AND q.is_archived=0 {('AND q.nt_agent=?' if agent else '')}""",
+            (today,*params),
+        ).fetchone()["value"]
+        po_missing = db.execute(f"SELECT COUNT(*) AS value FROM quotes WHERE po_detected=1 AND po_date IS NULL AND status='pending' AND is_historical=0 {clause}", params).fetchone()["value"]
+        last_import = db.execute("SELECT * FROM imports WHERE workspace='standard' AND status='confirmed' ORDER BY id DESC LIMIT 1").fetchone()
+        overdue = rows_to_dicts(db.execute(
+            f"""SELECT *,MAX(0,CAST(julianday('now')-julianday(COALESCE(last_reviewed_at,discovered_at)) AS INTEGER)) AS days_since_activity
+            FROM quotes WHERE status='pending' AND is_safe=0 AND is_historical=0 AND is_archived=0
+            AND julianday('now')-julianday(COALESCE(last_reviewed_at,discovered_at))>15 {clause}
+            ORDER BY days_since_activity DESC LIMIT 8""", params).fetchall())
+    return {"currency":"USD","counts":counts,"added_today":added_today,"po_today":po_today,"po_missing":po_missing,
+            "priorities":priorities,"last_import":dict(last_import) if last_import else None,
+            "overdue_count":len(overdue),"overdue_quotes":overdue}
+
+
+def agents() -> list[str]:
+    with connect() as db:
+        rows = db.execute("SELECT DISTINCT nt_agent FROM quotes WHERE trim(nt_agent)<>'' ORDER BY nt_agent").fetchall()
+    return [row["nt_agent"] for row in rows]
+
+
+def report_activity(start_date: str, end_date: str, actor_user_id: int | None = None, agent: str = "") -> dict[str, Any]:
+    start = date.fromisoformat(start_date); end = date.fromisoformat(end_date)
+    if end < start: raise ValueError("End date cannot be before start date")
+    event_actor = " AND e.user_id=?" if actor_user_id else ""; event_agent = " AND q.nt_agent=?" if agent else ""
+    event_params: list[Any] = [start_date,end_date] + ([actor_user_id] if actor_user_id else []) + ([agent] if agent else [])
+    quote_agent = " AND q.nt_agent=?" if agent else ""; quote_params: list[Any] = [start_date,end_date] + ([agent] if agent else [])
+    created_actor = " AND q.created_by_user_id=?" if actor_user_id else ""
+    created_params: list[Any] = [start_date,end_date] + ([actor_user_id] if actor_user_id else []) + ([agent] if agent else [])
+    with connect() as db:
+        events = rows_to_dicts(db.execute(
+            f"""SELECT e.*,q.folio,q.end_user,q.nt_agent,q.priority,q.status,q.total_usd,q.net_total_usd,
+            q.po_total_usd,q.po_date,q.loss_reason,
+            (SELECT COUNT(*) FROM quote_invoices i WHERE i.quote_id=q.id AND i.active=1) AS invoice_count
+            FROM quote_events e JOIN quotes q ON q.id=e.quote_id
+            WHERE date(e.created_at) BETWEEN ? AND ? {event_actor} {event_agent} AND q.is_historical=0 AND q.is_archived=0
+            ORDER BY e.created_at,e.id""", event_params).fetchall())
+        new_quotes = rows_to_dicts(db.execute(
+            f"SELECT q.* FROM quotes q WHERE date(q.discovered_at) BETWEEN ? AND ? {created_actor} {quote_agent} AND q.is_historical=0 AND q.is_archived=0 ORDER BY q.discovered_at", created_params).fetchall())
+        pending_total = db.execute(
+            f"SELECT COALESCE(SUM(q.total_usd),0) AS value FROM quotes q WHERE q.status='pending' AND q.quote_date BETWEEN ? AND ? {quote_agent} AND q.is_historical=0 AND q.is_archived=0", quote_params).fetchone()["value"]
+    reviews = [e for e in events if e["event_type"]=="review_saved"]
+    status_events = [e for e in events if e["event_type"]=="status_changed"]
+    lost_by_quote = {e["quote_id"]:e for e in status_events if e["to_status"]=="lost"}
+    po_by_quote = {e["quote_id"]:e for e in status_events if e["to_status"]=="po"}
+    loss_breakdown: dict[str,int] = {}
+    for e in lost_by_quote.values():
+        reason = e.get("note") or e.get("loss_reason") or "Not specified"; loss_breakdown[reason] = loss_breakdown.get(reason,0)+1
+    reviewed_ids = {e["quote_id"] for e in reviews}; reviewed = []
+    for quote_id in reviewed_ids:
+        matching = [e for e in events if e["quote_id"]==quote_id and e["event_type"] in {"review_saved","comment_added","status_changed","safe_changed","po_invoices_registered","po_invoices_updated","po_invoices_cleared"}]
+        base = matching[0]
+        reviewed.append({"quote_id":quote_id,"folio":base["folio"],"receptor":base["end_user"],"nt_agent":base["nt_agent"],
+                         "priority":base["priority"],"status":base["status"],"total":base["total_usd"],
+                         "net_total":base["net_total_usd"],"po_total":base["po_total_usd"],"events":matching})
+    po_rows = [{"folio":e["folio"],"receptor":e["end_user"],"po_date":e["po_date"],"quoted_total":e["total_usd"],
+                "po_total":e["po_total_usd"],"invoice_count":e.get("invoice_count",0),
+                "variance":float(e["po_total_usd"] or 0)-float(e["total_usd"] or 0)} for e in po_by_quote.values()]
+    lost_rows = [{"folio":e["folio"],"receptor":e["end_user"],"reason":e.get("note") or e.get("loss_reason") or "Not specified","date":e["created_at"][:10]} for e in lost_by_quote.values()]
+    return {"workspace":"standard","currency":"USD","start_date":start_date,"end_date":end_date,
+            "new_quotes":len(new_quotes),"quotes_reviewed":len(reviewed_ids),"status_changes":len(status_events),
+            "po_changes":len(po_rows),"lost_changes":len(lost_rows),"pending_value":float(pending_total or 0),
+            "po_quoted_value":sum(float(r["quoted_total"] or 0) for r in po_rows),"po_value":sum(float(r["po_total"] or 0) for r in po_rows),
+            "loss_breakdown":loss_breakdown,"po_rows":po_rows,"lost_rows":lost_rows,"reviewed":reviewed,"new_rows":new_quotes}
+
+
+def monthly_report(months: int = 12, agent: str = "") -> list[dict[str, Any]]:
+    clause = " AND nt_agent=?" if agent else ""; params: tuple[Any,...] = (agent,) if agent else ()
+    with connect() as db:
+        rows = db.execute(
+            f"""SELECT substr(quote_date,1,7) AS month,COUNT(*) AS quotes,SUM(status='pending') AS pending,
+            SUM(status='po') AS po,SUM(status='lost') AS lost,COALESCE(SUM(total_usd),0) AS quoted_value,
+            COALESCE(SUM(CASE WHEN status='po' THEN po_total_usd ELSE 0 END),0) AS po_value
+            FROM quotes WHERE is_historical=0 AND is_archived=0 {clause} GROUP BY month ORDER BY month DESC LIMIT ?""",
+            (*params,months)).fetchall()
+    return list(reversed(rows_to_dicts(rows)))
+
+
+def daily_activity(report_date: str, agent: str = "") -> dict[str, Any]:
+    data = report_activity(report_date,report_date,None,agent)
+    data.update({"date":report_date,"agent":agent,"report_currency":"USD","report_title":"Daily follow-up report",
+                 "activity_count":data["quotes_reviewed"],"quotes":data["reviewed"],"notes":[],"comment_changes":sum(
+                     len([e for e in q["events"] if e["event_type"]=="comment_added"]) for q in data["reviewed"]),
+                 "reviews_without_changes":0,"follow_up_methods":{m:len({q["quote_id"] for q in data["reviewed"] if any(e["follow_up_type"]==m for e in q["events"])}) for m in ("email","call","visit")}})
+    return data
+
+
+def quote_path(quote_id: int) -> Path:
+    with connect() as db:
+        row = db.execute("SELECT source_path FROM quotes WHERE id=?", (quote_id,)).fetchone()
+    if not row: raise KeyError("Quotation not found")
+    return Path(row["source_path"])
