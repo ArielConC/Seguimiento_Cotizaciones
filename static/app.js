@@ -240,7 +240,11 @@ function activityCell(q) {
   } else if (q.follow_up_type) {
     detail = `<span class="initial-badge">FollowUp - ${methodLabel(q.follow_up_type)}</span>`;
   }
-  return `${fmtDate(q.last_activity_at)}${detail}`;
+  
+  // SOLUCIÓN: Recortar la hora y usar solo los primeros 10 caracteres (YYYY-MM-DD)
+  const dateOnly = q.last_activity_at ? q.last_activity_at.substring(0, 10) : '';
+  
+  return `${fmtDate(dateOnly)}${detail}`;
 }
 function trackingLegend() {
   const labels = state.language === 'es' 
