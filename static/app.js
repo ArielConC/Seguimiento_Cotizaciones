@@ -224,10 +224,16 @@ function trackingClass(q){if(q.status==='po')return 'tracking-green';if(q.status
 function ageBadge(q) {
   let days = Number(q.quote_age_days || 0);
   
-  // Si es PO y tiene fecha, calculamos los días exactos que tomó ganarla
+  // Si es PO, congelar con la fecha de la factura
   if (q.status === 'po' && q.po_date) {
     const d1 = new Date(`${q.quote_date.substring(0, 10)}T12:00:00`);
     const d2 = new Date(`${q.po_date.substring(0, 10)}T12:00:00`);
+    days = Math.max(0, Math.floor((d2 - d1) / 86400000));
+  } 
+  // Si es Lost, congelar con la fecha en que se marcó como perdida
+  else if (q.status === 'lost' && q.status_changed_at) {
+    const d1 = new Date(`${q.quote_date.substring(0, 10)}T12:00:00`);
+    const d2 = new Date(`${q.status_changed_at.substring(0, 10)}T12:00:00`);
     days = Math.max(0, Math.floor((d2 - d1) / 86400000));
   }
   
