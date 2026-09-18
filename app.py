@@ -10,7 +10,6 @@ import socket
 import threading
 import traceback
 import webbrowser
-from datetime import date
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -118,7 +117,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Disposition",f'attachment; filename="{filename}"'); self.send_header("Cache-Control","no-store"); self.end_headers(); self.wfile.write(content)
 
     def _report(self,workspace:str,params:dict[str,str],user:dict[str,Any])->dict[str,Any]:
-        start=params.get("start",date.today().isoformat()); end=params.get("end",start); scope=params.get("scope","mine")
+        start=params.get("start",database.today_local().isoformat()); end=params.get("end",start); scope=params.get("scope","mine")
         if scope=="all" and not auth.can_team_reports(user): raise PermissionError("Your role cannot generate team-wide reports")
         actor_id=None if scope=="all" else int(user["id"]); agent=params.get("agent","")
         data=database.report_activity(start,end,actor_id,agent) if workspace=="standard" else special.report_activity(start,end,actor_id,agent)
@@ -142,10 +141,16 @@ class Handler(BaseHTTPRequestHandler):
             elif re.fullmatch(r"/api/special/quotes/\d+",parsed.path): self._json(special.get_quote(int(parsed.path.rsplit("/",1)[1])))
             elif parsed.path=="/api/managed": self._json(database.list_managed_quotes(params))
             elif parsed.path=="/api/special/managed": self._json(special.list_managed(params))
+            elif parsed.path=="/api/management":
+                if not auth.is_management_profile(user): raise PermissionError("Management view is restricted")
+                self._json(database.list_management_quotes(params))
+            elif parsed.path=="/api/special/management":
+                if not auth.is_management_profile(user): raise PermissionError("Management view is restricted")
+                self._json(special.list_management(params))
             elif parsed.path=="/api/dashboard":
-                data=database.dashboard(params.get("agent","")); data["backup"]=backup.status(); self._json(data)
+                data=database.dashboard(params.get("agent",""),params.get("start",""),params.get("end","")); data["backup"]=backup.status(); self._json(data)
             elif parsed.path=="/api/special/dashboard":
-                data=special.dashboard(params.get("agent","")); data["backup"]=backup.status(); self._json(data)
+                data=special.dashboard(params.get("agent",""),params.get("start",""),params.get("end","")); data["backup"]=backup.status(); self._json(data)
             elif parsed.path=="/api/agents": self._json(database.agents())
             elif parsed.path=="/api/special/agents": self._json(special.agents())
             elif parsed.path=="/api/special/ranks": self._json(special.ranks())

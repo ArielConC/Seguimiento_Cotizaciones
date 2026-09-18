@@ -4,22 +4,23 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Quotation Follow-up | NT Tool</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260917.7">
+  <link rel="stylesheet" href="/static/styles.css?v=20260918.1">
 </head>
 <body>
   <div id="app" class="app-shell hidden">
     <aside class="sidebar">
       <div class="brand"><div class="brand-mark">NT</div><div><strong>NT TOOL</strong><span data-i18n="sales_followup">Sales follow-up</span></div></div>
       <nav>
-        <button class="nav-item active" data-view="dashboard">⌂ <span data-i18n="dashboard">Dashboard</span></button>
-        <button class="nav-item" data-view="pending">◎ <span data-i18n="priorities">SABC Priorities</span></button>
-        <button class="nav-item" data-view="managed">↗ <span data-i18n="managed">Managed</span></button>
-        <button class="nav-item" data-view="safe">◆ <span data-i18n="safe">Safe</span></button>
-        <button class="nav-item standard-only" data-view="po_missing">! <span data-i18n="po_missing">PO Date Missing</span></button>
-        <button class="nav-item" data-view="po">✓ <span>PO</span></button>
-        <button class="nav-item" data-view="lost">× <span data-i18n="lost">Lost</span></button>
-        <button class="nav-item special-only" data-view="archive">▣ <span data-i18n="archive">Archive</span></button>
-        <button class="nav-item standard-only" data-view="historical">◷ <span data-i18n="historical">Historical</span></button>
+        <button class="nav-item regular-nav active" data-view="dashboard">⌂ <span data-i18n="dashboard">Dashboard</span></button>
+        <button class="nav-item manager-only hidden" data-view="management">▦ <span data-i18n="management">Management</span></button>
+        <button class="nav-item regular-nav" data-view="pending">◎ <span data-i18n="priorities">SABC Priorities</span></button>
+        <button class="nav-item regular-nav" data-view="managed">↗ <span data-i18n="managed">Managed</span></button>
+        <button class="nav-item regular-nav" data-view="safe">◆ <span data-i18n="safe">Safe</span></button>
+        <button class="nav-item regular-nav standard-only" data-view="po_missing">! <span data-i18n="po_missing">PO Date Missing</span></button>
+        <button class="nav-item regular-nav" data-view="po">✓ <span>PO</span></button>
+        <button class="nav-item regular-nav" data-view="lost">× <span data-i18n="lost">Lost</span></button>
+        <button class="nav-item regular-nav special-only" data-view="archive">▣ <span data-i18n="archive">Archive</span></button>
+        <button class="nav-item regular-nav standard-only" data-view="historical">◷ <span data-i18n="historical">Historical</span></button>
         <button class="nav-item" data-view="reports">▥ <span data-i18n="reports">Reports</span></button>
         <button class="nav-item admin-only" data-view="users">⚙ <span data-i18n="users">Users</span></button>
       </nav>
@@ -40,6 +41,12 @@
         </div>
       </header>
 
+      <section id="dashboard-period-controls" class="period-controls">
+        <label><span data-i18n="period">Period</span><select id="dashboard-period"><option value="all" data-i18n="all_history">All history</option><option value="today" data-i18n="today">Today</option><option value="month" data-i18n="current_month">Current month</option><option value="fiscal" data-i18n="fiscal_year">Fiscal year</option><option value="custom" data-i18n="custom">Custom range</option></select></label>
+        <label id="dashboard-start-wrap" class="hidden"><span data-i18n="start_date">Start date</span><input id="dashboard-start" type="date"></label>
+        <label id="dashboard-end-wrap" class="hidden"><span data-i18n="end_date">End date</span><input id="dashboard-end" type="date"></label>
+        <p id="dashboard-period-label" class="period-label"></p>
+      </section>
       <div id="pending-total-banner" class="financial-banners"><div class="pending-total-banner"><span data-i18n="pending_total">Pending quotation total</span><strong id="global-pending-total">—</strong></div><div class="pending-total-banner po-total-banner"><span data-i18n="po_total">PO total</span><strong id="global-po-total">—</strong></div></div>
       <div id="toast" class="toast" role="status"></div>
 
@@ -55,11 +62,13 @@
 
       <section id="view-list" class="view">
         <article class="panel">
+          <div id="management-summary" class="management-summary hidden"></div>
           <div class="filters">
-            <label><span data-i18n="search">Search</span><input id="quote-search" type="search" placeholder="Quotation, customer, End User, or distributor"></label>
-            <label><span data-i18n="priority">Priority</span><select id="priority-filter"><option value="">All</option><option>S</option><option>A</option><option>B</option><option>C</option></select></label>
+            <label id="search-filter-wrap"><span data-i18n="search">Search</span><input id="quote-search" type="search" placeholder="Quotation, customer, End User, or distributor"></label>
+            <label id="status-filter-wrap" class="hidden"><span data-i18n="status">Status</span><select id="status-filter"><option value="" data-i18n="all">All</option><option value="pending">Pending</option><option value="lost">Lost</option><option value="po">PO</option></select></label>
+            <label id="priority-filter-wrap"><span data-i18n="priority">Priority</span><select id="priority-filter"><option value="">All</option><option>S</option><option>A</option><option>B</option><option>C</option></select></label>
             <label id="rank-filter-wrap" class="special-only"><span>Rank</span><select id="rank-filter"><option value="">All</option></select></label>
-            <label><span data-i18n="sort_by">Sort by</span><select id="quote-order"><option value="priority">Priority: S to C</option><option value="date_desc">Date: newest first</option><option value="date_asc">Date: oldest first</option><option value="folio_desc">Quotation: highest to lowest</option><option value="folio_asc">Quotation: lowest to highest</option><option value="amount_desc">Amount: highest to lowest</option><option value="amount_asc">Amount: lowest to highest</option></select></label>
+            <label id="order-filter-wrap"><span data-i18n="sort_by">Sort by</span><select id="quote-order"><option value="priority">Priority: S to C</option><option value="date_desc">Date: newest first</option><option value="date_asc">Date: oldest first</option><option value="folio_desc">Quotation: highest to lowest</option><option value="folio_asc">Quotation: lowest to highest</option><option value="amount_desc">Amount: highest to lowest</option><option value="amount_asc">Amount: lowest to highest</option><option value="newest_activity">Activity: newest first</option><option value="oldest_activity">Activity: oldest first</option></select></label>
             <div class="result-count"><strong id="quote-count">0</strong><span id="quote-total">—</span></div>
           </div>
           <div id="quotes-table" class="table-wrap"></div>
@@ -113,13 +122,13 @@
   </dialog>
 
   <dialog id="manage-dialog">
-    <form id="manage-form" class="dialog-content"><div class="dialog-heading"><div><p class="eyebrow" data-i18n="update_followup">UPDATE FOLLOW-UP</p><h2 id="manage-title"></h2></div><button type="button" class="icon-button dialog-close">×</button></div><div id="manage-summary" class="detail-grid"></div><label data-i18n="status">Status<select id="manage-status"><option value="pending">Pending</option><option value="po">PO</option><option value="lost">Lost</option></select></label><label data-i18n="followup_method">Follow-up method<select id="manage-method" required><option value="">Select</option><option value="email">E-mail</option><option value="call">Call</option><option value="visit">Visit</option></select></label><label id="loss-wrap" class="hidden"><span data-i18n="loss_reason">Loss reason</span><select id="manage-loss"><option value="">Select</option><option>Lead Time</option><option>Over Budget</option><option>Window Shopping</option><option>Project Cancelled</option><option>Mismatch</option></select></label><section id="po-fields" class="invoice-editor hidden"><div class="invoice-editor-heading"><div><h3 data-i18n="po_invoices">PO invoices</h3><p class="section-help" data-i18n="po_invoices_help">Add every invoice that forms this PO. The total and PO date are calculated automatically.</p></div><button id="add-invoice" class="button ghost" type="button" data-i18n="add_invoice">+ Add invoice</button></div><div id="invoice-rows" class="invoice-rows"></div><div class="invoice-total"><span data-i18n="po_total">PO total</span><strong id="invoice-total-value">—</strong></div></section><label id="safe-wrap" class="check"><input id="manage-safe" type="checkbox"><span data-i18n="mark_safe">Mark as Safe</span></label><label id="manage-comment-wrap" data-i18n="new_comment">New comment<textarea id="manage-comment" rows="3" placeholder="Append a new follow-up note"></textarea></label><div><h3 data-i18n="comment_history">Comment history</h3><div id="manage-comments" class="history"></div></div><div class="dialog-actions"><button class="button primary" data-i18n="save_review">Save review</button></div></form>
+    <form id="manage-form" class="dialog-content"><div class="dialog-heading"><div><p class="eyebrow" data-i18n="update_followup">UPDATE FOLLOW-UP</p><h2 id="manage-title"></h2></div><button type="button" class="icon-button dialog-close">×</button></div><div id="manage-summary" class="detail-grid"></div><label data-i18n="status">Status<select id="manage-status"><option value="pending">Pending</option><option value="po">PO</option><option value="lost">Lost</option></select></label><label data-i18n="followup_method">Follow-up method<select id="manage-method" required><option value="">Select</option><option value="email">E-mail</option><option value="call">Call</option><option value="visit">Visit</option></select></label><label id="loss-wrap" class="hidden"><span data-i18n="loss_reason">Loss reason</span><select id="manage-loss"><option value="">Select</option><option>Lead Time</option><option>Over Budget</option><option>Window Shopping</option><option>Project Cancelled</option><option>Mismatch</option><option>Stale Quote</option></select></label><section id="po-fields" class="invoice-editor hidden"><div class="invoice-editor-heading"><div><h3 data-i18n="po_invoices">PO invoices</h3><p class="section-help" data-i18n="po_invoices_help">Add every invoice that forms this PO. The total and PO date are calculated automatically.</p></div><button id="add-invoice" class="button ghost" type="button" data-i18n="add_invoice">+ Add invoice</button></div><div id="invoice-rows" class="invoice-rows"></div><div class="invoice-total"><span data-i18n="po_total">PO total</span><strong id="invoice-total-value">—</strong></div></section><label id="safe-wrap" class="check"><input id="manage-safe" type="checkbox"><span data-i18n="mark_safe">Mark as Safe</span></label><label id="manage-comment-wrap" data-i18n="new_comment">New comment<textarea id="manage-comment" rows="3" placeholder="Append a new follow-up note"></textarea></label><div><h3 data-i18n="comment_history">Comment history</h3><div id="manage-comments" class="history"></div></div><div class="dialog-actions"><button class="button primary" data-i18n="save_review">Save review</button></div></form>
   </dialog>
 
   <dialog id="view-dialog" class="wide-dialog"><div class="dialog-content"><div class="dialog-heading"><div><p class="eyebrow" data-i18n="operation_details">OPERATION DETAILS</p><h2 id="view-title"></h2></div><button type="button" class="icon-button dialog-close">×</button></div><div id="view-details" class="detail-grid"></div><section id="view-invoices-section" class="hidden"><h3 data-i18n="po_invoices">PO invoices</h3><div id="view-invoices" class="table-wrap"></div></section><h3 data-i18n="comment_history">Comment history</h3><div id="view-comments" class="history"></div><h3 data-i18n="audit_history">Activity history</h3><div id="view-events" class="history"></div></div></dialog>
 
   <dialog id="user-edit-dialog"><form id="user-edit-form" class="dialog-content"><div class="dialog-heading"><div><h2 data-i18n="edit_user">Edit user</h2><p id="edit-username" class="section-help"></p></div><button type="button" class="icon-button dialog-close">×</button></div><input id="edit-user-id" type="hidden"><label data-i18n="display_name">Display name<input id="edit-name" required></label><label data-i18n="agent">Agent<input id="edit-agent"></label><label class="check"><input id="edit-active" type="checkbox"><span data-i18n="active">Active</span></label><label data-i18n="temporary_password">Temporary password<input id="edit-password" type="text" minlength="10" placeholder="Leave blank to keep current password" autocomplete="off"></label><button id="generate-edit-password" class="button ghost" type="button" data-i18n="generate_password">Generate temporary password</button><p id="temporary-password-help" class="section-help" data-i18n="temporary_password_help">Copy the password before saving. The user will be asked to replace it at the next login.</p><button class="button primary" data-i18n="save">Save</button></form></dialog>
   <dialog id="password-dialog"><form id="password-form" class="dialog-content"><div class="dialog-heading"><h2 data-i18n="change_password">Change password</h2><button type="button" class="icon-button dialog-close">×</button></div><p id="password-notice" class="section-help"></p><label data-i18n="current_password">Current password<input id="current-password" type="password" required></label><label data-i18n="new_password">New password<input id="new-own-password" type="password" minlength="10" required></label><button class="button primary" data-i18n="change_password">Change password</button></form></dialog>
-  <script src="/static/app.js?v=20260917.7" defer></script>
+  <script src="/static/app.js?v=20260918.1" defer></script>
 </body>
 </html>

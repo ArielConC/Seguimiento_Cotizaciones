@@ -8,10 +8,12 @@ from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from openpyxl import load_workbook
 
 import po_invoices
+import distributors
 from parser import QuoteData, priority_for_total
 
 
@@ -38,7 +40,8 @@ DB_PATH = DATA_DIR / "cotizaciones.db"
 IMPORT_DIR = DATA_DIR / "imports"
 DEFAULT_QUOTATION_ROOT = r"C:\Users\fcoar\Dropbox\Quotation"
 PARSER_VERSION = 3
-LOSS_REASONS = ("Lead Time", "Over Budget", "Window Shopping", "Project Cancelled", "Mismatch")
+LOSS_REASONS = ("Lead Time", "Over Budget", "Window Shopping", "Project Cancelled", "Mismatch", "Stale Quote")
+LOCAL_TIME_ZONE = ZoneInfo(os.environ.get("NT_QUOTE_TIME_ZONE", "America/Mexico_City"))
 
 
 class ClosingConnection(sqlite3.Connection):
@@ -49,8 +52,50 @@ class ClosingConnection(sqlite3.Connection):
             self.close()
 
 
+def local_now() -> datetime:
+    return datetime.now(LOCAL_TIME_ZONE)
+
+
+def today_local() -> date:
+    return local_now().date()
+
+
 def now_iso() -> str:
-    return datetime.now().astimezone().isoformat(timespec="seconds")
+    return local_now().isoformat(timespec="seconds")
+
+
+def validate_period(start: str = "", end: str = "") -> tuple[str, str]:
+    start = str(start or "").strip()
+    end = str(end or "").strip()
+    if bool(start) != bool(end):
+        raise ValueError("Start date and end date are both required")
+    if not start:
+        return "", ""
+    start_date = date.fromisoformat(start)
+    end_date = date.fromisoformat(end)
+    if end_date < start_date:
+        raise ValueError("End date cannot be before start date")
+    return start_date.isoformat(), end_date.isoformat()
+
+
+def _days_since(value: str | None) -> int:
+    if not value:
+        return 0
+    try:
+        parsed = datetime.fromisoformat(value).date() if "T" in value else date.fromisoformat(value[:10])
+    except (TypeError, ValueError):
+        return 0
+    return max(0, (today_local() - parsed).days)
+
+
+def decorate_quote(row: dict[str, Any]) -> dict[str, Any]:
+    row["quote_age_days"] = _days_since(str(row.get("quote_date") or ""))
+    activity = row.get("last_reviewed_at") or row.get("discovered_at") or row.get("updated_at")
+    row["last_activity_at"] = activity
+    row["activity_is_initial"] = int(not bool(row.get("last_reviewed_at")))
+    row["days_since_activity"] = _days_since(str(activity or ""))
+    row["overdue"] = int(row.get("status") == "pending" and not row.get("is_safe") and row["days_since_activity"] >= 15)
+    return row
 
 
 def connect() -> sqlite3.Connection:
@@ -75,6 +120,12 @@ def initialize() -> None:
         db.executescript(
             """
             CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
+            CREATE TABLE IF NOT EXISTS distributor_catalog (
+                code TEXT PRIMARY KEY,
+                company_name TEXT NOT NULL,
+                normalized_name TEXT NOT NULL UNIQUE
+            );
 
             CREATE TABLE IF NOT EXISTS quotes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -181,6 +232,7 @@ def initialize() -> None:
             CREATE INDEX IF NOT EXISTS idx_events_created ON quote_events(created_at);
             CREATE INDEX IF NOT EXISTS idx_quote_invoices_active ON quote_invoices(quote_id,active);
             CREATE INDEX IF NOT EXISTS idx_imports_workspace ON imports(workspace, created_at);
+            CREATE INDEX IF NOT EXISTS idx_distributor_catalog_name ON distributor_catalog(normalized_name);
             """
         )
         _ensure_columns(db, "quotes", {
@@ -193,6 +245,7 @@ def initialize() -> None:
             "import_id": "INTEGER", "created_by_user_id": "INTEGER",
             "created_by_name": "TEXT NOT NULL DEFAULT ''", "last_reviewed_at": "TEXT",
             "last_reviewed_by": "INTEGER",
+            "distributor_code": "TEXT NOT NULL DEFAULT ''",
         })
         _ensure_columns(db, "quote_events", {
             "follow_up_type": "TEXT NOT NULL DEFAULT ''", "user_id": "INTEGER",
@@ -201,6 +254,21 @@ def initialize() -> None:
         db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('quotation_root',?)", (DEFAULT_QUOTATION_ROOT,))
         db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('months_back','3')")
         db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('scan_interval_seconds','300')")
+        for code, company_name in distributors.CATALOG:
+            db.execute(
+                """INSERT INTO distributor_catalog(code,company_name,normalized_name) VALUES(?,?,?)
+                ON CONFLICT(code) DO UPDATE SET company_name=excluded.company_name,
+                normalized_name=excluded.normalized_name""",
+                (code, company_name, distributors.normalize_name(company_name)),
+            )
+        catalog = {
+            row["normalized_name"]: row["code"]
+            for row in db.execute("SELECT code,normalized_name FROM distributor_catalog").fetchall()
+        }
+        for quote in db.execute("SELECT id,distributor_company,distributor_code FROM quotes").fetchall():
+            code = catalog.get(distributors.normalize_name(quote["distributor_company"]))
+            if code and code != quote["distributor_code"]:
+                db.execute("UPDATE quotes SET distributor_code=? WHERE id=?", (code, quote["id"]))
         db.execute(
             """
             UPDATE quotes SET
@@ -234,6 +302,14 @@ def get_setting(key: str, default: str = "") -> str:
 def set_setting(key: str, value: str) -> None:
     with connect() as db:
         db.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
+
+
+def distributor_code_for(db: sqlite3.Connection, company_name: str) -> str:
+    normalized = distributors.normalize_name(company_name)
+    if not normalized:
+        return ""
+    row = db.execute("SELECT code FROM distributor_catalog WHERE normalized_name=?", (normalized,)).fetchone()
+    return str(row["code"]) if row else ""
 
 
 def rows_to_dicts(rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
@@ -371,17 +447,18 @@ def import_workbook(content: bytes, filename: str, actor: dict[str, Any] | None 
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         for record in unique.values():
+            distributor_code = distributor_code_for(db, record["distributor_company"])
             current = db.execute("SELECT * FROM quotes WHERE folio=?", (record["folio"],)).fetchone()
             if current:
                 db.execute(
                     """
-                    UPDATE quotes SET series=?,folio_number=?,quote_date=?,receptor=?,distributor_company=?,end_user=?,
+                    UPDATE quotes SET series=?,folio_number=?,quote_date=?,receptor=?,distributor_company=?,distributor_code=?,end_user=?,
                         distributor_agent=?,nt_agent=?,customer_order=?,po_detected=?,total_usd=?,net_total_usd=?,
                         currency='USD',priority=?,source_path=?,source_mtime=0,source_kind='excel',is_historical=0,
                         is_archived=0,import_id=? WHERE id=?
                     """,
                     (record["series"],record["folio_number"],record["quote_date"],record["receptor"],
-                     record["distributor_company"],record["end_user"],record["distributor_agent"],record["nt_agent"],
+                     record["distributor_company"],distributor_code,record["end_user"],record["distributor_agent"],record["nt_agent"],
                      record["customer_order"],record["po_detected"],record["total_usd"],record["net_total_usd"],
                      record["priority"],filename,import_id,current["id"]),
                 )
@@ -389,14 +466,14 @@ def import_workbook(content: bytes, filename: str, actor: dict[str, Any] | None 
             else:
                 cursor = db.execute(
                     """
-                    INSERT INTO quotes(folio,series,folio_number,quote_date,receptor,distributor_company,end_user,
+                    INSERT INTO quotes(folio,series,folio_number,quote_date,receptor,distributor_company,distributor_code,end_user,
                         distributor_agent,nt_agent,customer_order,po_detected,total_usd,net_total_usd,currency,
                         priority,status,source_path,source_mtime,source_kind,import_id,created_by_user_id,created_by_name,
                         discovered_at,updated_at,status_changed_at)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'USD',?,'pending',?,0,'excel',?,?,?,?,?,?)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'USD',?,'pending',?,0,'excel',?,?,?,?,?,?)
                     """,
                     (record["folio"],record["series"],record["folio_number"],record["quote_date"],record["receptor"],
-                     record["distributor_company"],record["end_user"],record["distributor_agent"],record["nt_agent"],
+                     record["distributor_company"],distributor_code,record["end_user"],record["distributor_agent"],record["nt_agent"],
                      record["customer_order"],record["po_detected"],record["total_usd"],record["net_total_usd"],
                      record["priority"],filename,import_id,actor_id,actor_name,timestamp,timestamp,timestamp),
                 )
@@ -488,10 +565,14 @@ def _quote_where(filters: dict[str, str], alias: str = "q") -> tuple[list[str], 
         clauses.append(f"{alias}.is_safe=?"); values.append(int(filters["safe"]))
     if filters.get("po_missing") == "1":
         clauses.append(f"{alias}.po_detected=1 AND {alias}.po_date IS NULL AND {alias}.status='pending'")
+    start, end = validate_period(filters.get("start", ""), filters.get("end", ""))
+    if start:
+        clauses.append(f"{alias}.quote_date BETWEEN ? AND ?")
+        values.extend([start, end])
     if filters.get("search"):
         needle = f"%{filters['search']}%"
-        clauses.append(f"({alias}.folio LIKE ? OR {alias}.distributor_company LIKE ? OR {alias}.end_user LIKE ? OR {alias}.receptor LIKE ? OR {alias}.distributor_agent LIKE ? OR {alias}.customer_order LIKE ?)")
-        values.extend([needle] * 6)
+        clauses.append(f"({alias}.folio LIKE ? OR {alias}.distributor_code LIKE ? OR {alias}.distributor_company LIKE ? OR {alias}.end_user LIKE ? OR {alias}.receptor LIKE ? OR {alias}.distributor_agent LIKE ? OR {alias}.customer_order LIKE ?)")
+        values.extend([needle] * 7)
     return clauses, values
 
 
@@ -507,24 +588,44 @@ def list_quotes(filters: dict[str, str]) -> list[dict[str, Any]]:
     order = orders.get(filters.get("order", "priority"), orders["priority"])
     with connect() as db:
         rows = db.execute(f"SELECT q.* FROM quotes q WHERE {' AND '.join(clauses)} ORDER BY {order}", values).fetchall()
-    return rows_to_dicts(rows)
+    return [decorate_quote(row) for row in rows_to_dicts(rows)]
 
 
 def list_managed_quotes(filters: dict[str, str] | None = None) -> list[dict[str, Any]]:
     filters = filters or {}
     clauses, values = _quote_where(filters)
     clauses.append("q.last_reviewed_at IS NOT NULL")
-    if filters.get("overdue") == "1":
-        clauses.append("q.status='pending' AND q.is_safe=0 AND julianday('now')-julianday(q.last_reviewed_at)>15")
     orders = {"oldest_activity":"q.last_reviewed_at ASC","newest_activity":"q.last_reviewed_at DESC",
+              "status_activity":"CASE q.status WHEN 'pending' THEN 1 WHEN 'lost' THEN 2 ELSE 3 END,q.last_reviewed_at DESC",
               "folio_desc":"CAST(q.folio_number AS INTEGER) DESC","folio_asc":"CAST(q.folio_number AS INTEGER) ASC"}
-    order = orders.get(filters.get("order", "oldest_activity"), orders["oldest_activity"])
+    order = orders.get(filters.get("order", "status_activity"), orders["status_activity"])
     with connect() as db:
         rows = db.execute(
-            f"""SELECT q.*,MAX(0,CAST(julianday('now')-julianday(q.last_reviewed_at) AS INTEGER)) AS days_since_activity,
-            CASE WHEN q.status='pending' AND q.is_safe=0 AND julianday('now')-julianday(q.last_reviewed_at)>15 THEN 1 ELSE 0 END AS overdue
-            FROM quotes q WHERE {' AND '.join(clauses)} ORDER BY {order}""", values).fetchall()
-    return rows_to_dicts(rows)
+            f"SELECT q.* FROM quotes q WHERE {' AND '.join(clauses)} ORDER BY {order}", values).fetchall()
+    result = [decorate_quote(row) for row in rows_to_dicts(rows)]
+    return [row for row in result if not filters.get("overdue") == "1" or row["overdue"]]
+
+
+def list_management_quotes(filters: dict[str, str] | None = None) -> list[dict[str, Any]]:
+    filters = dict(filters or {})
+    filters.pop("historical", None)
+    filters.pop("archive", None)
+    clauses, values = _quote_where(filters)
+    orders = {
+        "priority": "CASE q.priority WHEN 'S' THEN 1 WHEN 'A' THEN 2 WHEN 'B' THEN 3 ELSE 4 END,q.total_usd DESC",
+        "date_desc": "q.quote_date DESC,CAST(q.folio_number AS INTEGER) DESC",
+        "date_asc": "q.quote_date ASC,CAST(q.folio_number AS INTEGER) ASC",
+        "folio_desc": "CAST(q.folio_number AS INTEGER) DESC,q.quote_date DESC",
+        "folio_asc": "CAST(q.folio_number AS INTEGER) ASC,q.quote_date ASC",
+        "amount_desc": "q.total_usd DESC,q.quote_date DESC",
+        "amount_asc": "q.total_usd ASC,q.quote_date ASC",
+        "newest_activity": "datetime(COALESCE(q.last_reviewed_at,q.discovered_at)) DESC",
+        "oldest_activity": "datetime(COALESCE(q.last_reviewed_at,q.discovered_at)) ASC",
+    }
+    order = orders.get(filters.get("order", "newest_activity"), orders["newest_activity"])
+    with connect() as db:
+        rows = db.execute(f"SELECT q.* FROM quotes q WHERE {' AND '.join(clauses)} ORDER BY {order}", values).fetchall()
+    return [decorate_quote(row) for row in rows_to_dicts(rows)]
 
 
 def get_quote(quote_id: int) -> dict[str, Any]:
@@ -535,7 +636,7 @@ def get_quote(quote_id: int) -> dict[str, Any]:
         comments = rows_to_dicts(db.execute("SELECT * FROM quote_comments WHERE quote_id=? ORDER BY created_at,id", (quote_id,)).fetchall())
         events = rows_to_dicts(db.execute("SELECT * FROM quote_events WHERE quote_id=? ORDER BY created_at,id", (quote_id,)).fetchall())
         invoices = po_invoices.active(db,"quote_invoices",quote_id)
-    result = dict(row); result["comments"] = comments; result["events"] = events; result["invoices"] = invoices
+    result = decorate_quote(dict(row)); result["comments"] = comments; result["events"] = events; result["invoices"] = invoices
     result["read_only"] = bool(result["is_historical"])
     return result
 
@@ -573,7 +674,6 @@ def update_quote(quote_id: int, status: str, comment: str, loss_reason: str, fol
                    "safe":int(is_safe) != int(current["is_safe"]),"invoices":invoice_changed,
                    "po_total":po_total_usd != current["po_total_usd"],"po_date":po_date != current["po_date"],"method":follow_up_type != current["follow_up_type"],
                    "comment":bool(comment)}
-        if not any(changes.values()): raise ValueError("Make a change or add a comment before saving the review")
         db.execute(
             """UPDATE quotes SET status=?,loss_reason=?,follow_up_type=?,is_safe=?,po_total_usd=?,po_date=?,
             po_detected=CASE WHEN ?='po' THEN 1 ELSE po_detected END,comment=CASE WHEN ?<>'' THEN ? ELSE comment END,
@@ -609,36 +709,59 @@ def update_quote(quote_id: int, status: str, comment: str, loss_reason: str, fol
     return get_quote(quote_id)
 
 
-def dashboard(agent: str = "") -> dict[str, Any]:
-    clause = " AND nt_agent=?" if agent else ""; params: tuple[Any,...] = (agent,) if agent else ()
-    today = date.today().isoformat()
+def dashboard(agent: str = "", start: str = "", end: str = "") -> dict[str, Any]:
+    start, end = validate_period(start, end)
+    agent_clause = " AND q.nt_agent=?" if agent else ""
+    agent_params: list[Any] = [agent] if agent else []
+    quote_period = " AND q.quote_date BETWEEN ? AND ?" if start else ""
+    quote_params = [*agent_params, *([start, end] if start else [])]
+    po_period = " AND q.po_date BETWEEN ? AND ?" if start else ""
+    po_params = [*agent_params, *([start, end] if start else [])]
+    today = today_local().isoformat()
     with connect() as db:
-        counts = dict(db.execute(
-            f"""SELECT COUNT(*) AS total,SUM(status='pending' AND is_safe=0) AS pending,
-            SUM(status='pending' AND is_safe=1) AS safe,SUM(status='po') AS po,SUM(status='lost') AS lost,
-            COALESCE(SUM(CASE WHEN status='pending' THEN total_usd ELSE 0 END),0) AS pending_value,
-            COALESCE(SUM(CASE WHEN status='po' THEN total_usd ELSE 0 END),0) AS po_quoted_value,
-            COALESCE(SUM(CASE WHEN status='po' THEN COALESCE(po_total_usd,0) ELSE 0 END),0) AS po_value
-            FROM quotes WHERE is_archived=0 AND is_historical=0 {clause}""", params).fetchone())
+        pending = dict(db.execute(
+            f"""SELECT COUNT(*) AS all_pending,
+            SUM(CASE WHEN q.is_safe=0 THEN 1 ELSE 0 END) AS pending,
+            SUM(CASE WHEN q.is_safe=1 THEN 1 ELSE 0 END) AS safe,
+            COALESCE(SUM(q.total_usd),0) AS pending_value
+            FROM quotes q WHERE q.status='pending' AND q.is_archived=0 AND q.is_historical=0
+            {agent_clause}{quote_period}""", quote_params).fetchone())
+        po = dict(db.execute(
+            f"""SELECT COUNT(*) AS po,COALESCE(SUM(q.total_usd),0) AS po_quoted_value,
+            COALESCE(SUM(COALESCE(q.po_total_usd,0)),0) AS po_value
+            FROM quotes q WHERE q.status='po' AND q.is_archived=0 AND q.is_historical=0
+            {agent_clause}{po_period}""", po_params).fetchone())
+        lost = db.execute(
+            f"""SELECT COUNT(*) AS value FROM quotes q WHERE q.status='lost' AND q.is_archived=0
+            AND q.is_historical=0 {agent_clause}{quote_period}""", quote_params).fetchone()["value"]
+        counts = {**pending, **po, "lost": lost, "total": int(pending["all_pending"] or 0)+int(po["po"] or 0)+int(lost or 0)}
         priorities = rows_to_dicts(db.execute(
-            f"SELECT priority,COUNT(*) AS count,COALESCE(SUM(total_usd),0) AS value FROM quotes WHERE status='pending' AND is_archived=0 AND is_historical=0 {clause} GROUP BY priority", params).fetchall())
-        added_today = db.execute(f"SELECT COUNT(*) AS value FROM quotes WHERE date(discovered_at)=? AND is_historical=0 {clause}", (today,*params)).fetchone()["value"]
+            f"""SELECT q.priority,COUNT(*) AS count,COALESCE(SUM(q.total_usd),0) AS value
+            FROM quotes q WHERE q.status='pending' AND q.is_archived=0 AND q.is_historical=0
+            {agent_clause}{quote_period} GROUP BY q.priority""", quote_params).fetchall())
+        added_today = db.execute(
+            f"SELECT COUNT(*) AS value FROM quotes q WHERE date(q.discovered_at)=? AND q.is_historical=0 {agent_clause}",
+            (today,*agent_params),
+        ).fetchone()["value"]
         po_today = db.execute(
             f"""SELECT COUNT(DISTINCT e.quote_id) AS value FROM quote_events e
-            JOIN quotes q ON q.id=e.quote_id WHERE date(e.created_at)=? AND e.event_type='status_changed'
-            AND e.to_status='po' AND q.is_historical=0 AND q.is_archived=0 {('AND q.nt_agent=?' if agent else '')}""",
-            (today,*params),
+            JOIN quotes q ON q.id=e.quote_id WHERE substr(e.created_at,1,10)=? AND e.event_type='status_changed'
+            AND e.to_status='po' AND q.is_historical=0 AND q.is_archived=0 {agent_clause}""",
+            (today,*agent_params),
         ).fetchone()["value"]
-        po_missing = db.execute(f"SELECT COUNT(*) AS value FROM quotes WHERE po_detected=1 AND po_date IS NULL AND status='pending' AND is_historical=0 {clause}", params).fetchone()["value"]
+        po_missing = db.execute(
+            f"SELECT COUNT(*) AS value FROM quotes q WHERE q.po_detected=1 AND q.po_date IS NULL AND q.status='pending' AND q.is_historical=0 {agent_clause}",
+            agent_params,
+        ).fetchone()["value"]
         last_import = db.execute("SELECT * FROM imports WHERE workspace='standard' AND status='confirmed' ORDER BY id DESC LIMIT 1").fetchone()
-        overdue = rows_to_dicts(db.execute(
-            f"""SELECT *,MAX(0,CAST(julianday('now')-julianday(COALESCE(last_reviewed_at,discovered_at)) AS INTEGER)) AS days_since_activity
-            FROM quotes WHERE status='pending' AND is_safe=0 AND is_historical=0 AND is_archived=0
-            AND julianday('now')-julianday(COALESCE(last_reviewed_at,discovered_at))>15 {clause}
-            ORDER BY days_since_activity DESC LIMIT 8""", params).fetchall())
+        pending_rows = rows_to_dicts(db.execute(
+            f"""SELECT q.* FROM quotes q WHERE q.status='pending' AND q.is_safe=0 AND q.is_historical=0
+            AND q.is_archived=0 {agent_clause}""", agent_params).fetchall())
+        overdue_all = [decorate_quote(row) for row in pending_rows]
+        overdue_all = sorted((row for row in overdue_all if row["overdue"]), key=lambda row: row["days_since_activity"], reverse=True)
     return {"currency":"USD","counts":counts,"added_today":added_today,"po_today":po_today,"po_missing":po_missing,
             "priorities":priorities,"last_import":dict(last_import) if last_import else None,
-            "overdue_count":len(overdue),"overdue_quotes":overdue}
+            "overdue_count":len(overdue_all),"overdue_quotes":overdue_all[:8],"start_date":start,"end_date":end}
 
 
 def agents() -> list[str]:

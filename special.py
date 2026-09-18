@@ -367,7 +367,7 @@ def _decorate(row: dict[str,Any]) -> dict[str,Any]:
     row["folio"] = row.get("source_quote_number") or f"SPQ-{int(row['id']):05d}"
     row["receptor"] = row.get("customer_name") or "Unassigned customer"
     row["currency"] = "JPY"; row["quoted_amount"] = row.get("unit_price",0); row["po_total"] = row.get("po_total_usd")
-    return row
+    return database.decorate_quote(row)
 
 
 def list_quotes(filters: dict[str,str]) -> list[dict[str,Any]]:
@@ -377,6 +377,8 @@ def list_quotes(filters: dict[str,str]) -> list[dict[str,Any]]:
     if filters.get("priority"): clauses.append("q.priority=?"); values.append(filters["priority"])
     if filters.get("rank"): clauses.append("q.rank=?"); values.append(filters["rank"])
     if filters.get("safe") in {"0","1"}: clauses.append("q.is_safe=?"); values.append(int(filters["safe"]))
+    start,end=database.validate_period(filters.get("start",""),filters.get("end",""))
+    if start: clauses.append("q.quote_date BETWEEN ? AND ?"); values.extend([start,end])
     if filters.get("search"):
         needle=f"%{filters['search']}%"; clauses.append("(q.source_quote_number LIKE ? OR q.customer_name LIKE ? OR q.code LIKE ? OR q.description LIKE ? OR q.rank LIKE ?)"); values.extend([needle]*5)
     orders={"priority":"CASE q.priority WHEN 'S' THEN 1 WHEN 'A' THEN 2 WHEN 'B' THEN 3 ELSE 4 END,q.unit_price DESC",
@@ -389,15 +391,25 @@ def list_quotes(filters: dict[str,str]) -> list[dict[str,Any]]:
 
 def list_managed(filters: dict[str,str]|None=None) -> list[dict[str,Any]]:
     filters=dict(filters or {}); rows=list_quotes(filters); result=[]
-    now=datetime.now().astimezone()
     for row in rows:
         if not row.get("last_reviewed_at"): continue
-        reviewed=datetime.fromisoformat(row["last_reviewed_at"]); days=max(0,(now-reviewed).days)
-        row["days_since_activity"]=days; row["overdue"]=int(row["status"]=="pending" and not row["is_safe"] and days>15)
         if filters.get("overdue")=="1" and not row["overdue"]: continue
         result.append(row)
-    result.sort(key=lambda r:r["last_reviewed_at"],reverse=filters.get("order")=="newest_activity")
+    if filters.get("order","status_activity")=="status_activity":
+        status_order={"pending":0,"lost":1,"po":2}
+        result.sort(key=lambda row:(status_order.get(row["status"],9),-(datetime.fromisoformat(row["last_reviewed_at"]).timestamp())))
+    else:
+        result.sort(key=lambda row:row["last_reviewed_at"],reverse=filters.get("order")!="oldest_activity")
     return result
+
+
+def list_management(filters:dict[str,str]|None=None)->list[dict[str,Any]]:
+    filters=dict(filters or {}); filters.pop("archive",None)
+    rows=list_quotes(filters)
+    orders=filters.get("order","newest_activity")
+    if orders in {"newest_activity","oldest_activity"}:
+        rows.sort(key=lambda row:row.get("last_activity_at") or "",reverse=orders=="newest_activity")
+    return rows
 
 
 def get_quote(quote_id:int)->dict[str,Any]:
@@ -437,7 +449,6 @@ def update_quote(quote_id:int,status:str,comment:str,loss_reason:str,follow_up_t
                  "invoices":invoice_changed,
                  "po_total":po_total_usd!=current["po_total_usd"],"po_date":po_date!=current["po_date"],
                  "method":follow_up_type!=current["follow_up_type"],"comment":bool(comment)}
-        if not any(changes.values()): raise ValueError("Make a change or add a comment before saving the review")
         db.execute("""UPDATE special_quotes SET status=?,loss_reason=?,follow_up_type=?,is_safe=?,po_total_usd=?,po_date=?,
             comment=CASE WHEN ?<>'' THEN ? ELSE comment END,updated_at=?,last_reviewed_at=?,last_reviewed_by=?,
             status_changed_at=CASE WHEN status<>? THEN ? ELSE status_changed_at END WHERE id=?""",
@@ -474,26 +485,40 @@ def ranks()->list[str]:
     return [row["rank"] for row in rows]
 
 
-def dashboard(agent:str="")->dict[str,Any]:
-    clause=" AND nt_agent=?" if agent else ""; params=(agent,) if agent else (); today=date.today().isoformat()
+def dashboard(agent:str="",start:str="",end:str="")->dict[str,Any]:
+    start,end=database.validate_period(start,end)
+    agent_clause=" AND q.nt_agent=?" if agent else ""; agent_params=[agent] if agent else []
+    quote_period=" AND q.quote_date BETWEEN ? AND ?" if start else ""
+    quote_params=[*agent_params,*([start,end] if start else [])]
+    po_period=" AND q.po_date BETWEEN ? AND ?" if start else ""
+    po_params=[*agent_params,*([start,end] if start else [])]
+    today=database.today_local().isoformat()
     with database.connect() as db:
-        counts=dict(db.execute(f"""SELECT COUNT(*) AS total,SUM(status='pending' AND is_safe=0) AS pending,
-            SUM(status='pending' AND is_safe=1) AS safe,SUM(status='po') AS po,SUM(status='lost') AS lost,
-            COALESCE(SUM(CASE WHEN status='pending' THEN unit_price ELSE 0 END),0) AS pending_value,
-            COALESCE(SUM(CASE WHEN status='po' THEN unit_price ELSE 0 END),0) AS po_quoted_value,
-            COALESCE(SUM(CASE WHEN status='po' THEN COALESCE(po_total_usd,0) ELSE 0 END),0) AS po_value
-            FROM special_quotes WHERE is_archived=0 {clause}""",params).fetchone())
-        priorities=database.rows_to_dicts(db.execute(f"SELECT priority,COUNT(*) AS count,COALESCE(SUM(unit_price),0) AS value FROM special_quotes WHERE status='pending' AND is_archived=0 {clause} GROUP BY priority",params).fetchall())
-        added=db.execute(f"SELECT COUNT(*) AS value FROM special_quotes WHERE date(discovered_at)=? AND is_archived=0 {clause}",(today,*params)).fetchone()["value"]
+        pending=dict(db.execute(f"""SELECT COUNT(*) AS all_pending,
+            SUM(CASE WHEN q.is_safe=0 THEN 1 ELSE 0 END) AS pending,
+            SUM(CASE WHEN q.is_safe=1 THEN 1 ELSE 0 END) AS safe,
+            COALESCE(SUM(q.unit_price),0) AS pending_value
+            FROM special_quotes q WHERE q.status='pending' AND q.is_archived=0
+            {agent_clause}{quote_period}""",quote_params).fetchone())
+        po=dict(db.execute(f"""SELECT COUNT(*) AS po,COALESCE(SUM(q.unit_price),0) AS po_quoted_value,
+            COALESCE(SUM(COALESCE(q.po_total_usd,0)),0) AS po_value
+            FROM special_quotes q WHERE q.status='po' AND q.is_archived=0
+            {agent_clause}{po_period}""",po_params).fetchone())
+        lost=db.execute(f"SELECT COUNT(*) AS value FROM special_quotes q WHERE q.status='lost' AND q.is_archived=0 {agent_clause}{quote_period}",quote_params).fetchone()["value"]
+        counts={**pending,**po,"lost":lost,"total":int(pending["all_pending"] or 0)+int(po["po"] or 0)+int(lost or 0)}
+        priorities=database.rows_to_dicts(db.execute(f"""SELECT q.priority,COUNT(*) AS count,COALESCE(SUM(q.unit_price),0) AS value
+            FROM special_quotes q WHERE q.status='pending' AND q.is_archived=0 {agent_clause}{quote_period}
+            GROUP BY q.priority""",quote_params).fetchall())
+        added=db.execute(f"SELECT COUNT(*) AS value FROM special_quotes q WHERE substr(q.discovered_at,1,10)=? AND q.is_archived=0 {agent_clause}",(today,*agent_params)).fetchone()["value"]
         po_today=db.execute(f"""SELECT COUNT(DISTINCT e.quote_id) AS value FROM special_quote_events e
-            JOIN special_quotes q ON q.id=e.quote_id WHERE date(e.created_at)=? AND e.event_type='status_changed'
-            AND e.to_status='po' AND q.is_archived=0 {('AND q.nt_agent=?' if agent else '')}""",(today,*params)).fetchone()["value"]
+            JOIN special_quotes q ON q.id=e.quote_id WHERE substr(e.created_at,1,10)=? AND e.event_type='status_changed'
+            AND e.to_status='po' AND q.is_archived=0 {agent_clause}""",(today,*agent_params)).fetchone()["value"]
         last_import=db.execute("SELECT * FROM imports WHERE workspace='special' AND status='confirmed' ORDER BY id DESC LIMIT 1").fetchone()
-        overdue=database.rows_to_dicts(db.execute(f"""SELECT *,MAX(0,CAST(julianday('now')-julianday(COALESCE(last_reviewed_at,discovered_at)) AS INTEGER)) AS days_since_activity
-            FROM special_quotes WHERE status='pending' AND is_safe=0 AND is_archived=0 AND julianday('now')-julianday(COALESCE(last_reviewed_at,discovered_at))>15 {clause}
-            ORDER BY days_since_activity DESC LIMIT 8""",params).fetchall())
+        pending_rows=database.rows_to_dicts(db.execute(f"SELECT q.* FROM special_quotes q WHERE q.status='pending' AND q.is_safe=0 AND q.is_archived=0 {agent_clause}",agent_params).fetchall())
+        overdue_all=sorted((row for row in (_decorate(row) for row in pending_rows) if row["overdue"]),key=lambda row:row["days_since_activity"],reverse=True)
     return {"currency":"JPY","counts":counts,"added_today":added,"po_today":po_today,"po_missing":0,"priorities":priorities,
-            "last_import":dict(last_import) if last_import else None,"overdue_count":len(overdue),"overdue_quotes":overdue}
+            "last_import":dict(last_import) if last_import else None,"overdue_count":len(overdue_all),"overdue_quotes":overdue_all[:8],
+            "start_date":start,"end_date":end}
 
 
 def report_activity(start_date:str,end_date:str,actor_user_id:int|None=None,agent:str="")->dict[str,Any]:

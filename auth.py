@@ -95,6 +95,7 @@ def _public(row: Any, csrf_token: str = "") -> dict[str, Any]:
     user["can_team_reports"] = user["role"] in TEAM_REPORT_ROLES
     user["can_edit"] = user["role"] != "readonly"
     user["can_view_audit"] = user["role"] == "secretadmin"
+    user["management_profile"] = str(user.get("username") or "").casefold() == "takujiyamada"
     if csrf_token:
         user["csrf_token"] = csrf_token
     return user
@@ -219,6 +220,10 @@ def audit(user: dict[str, Any] | None, action: str, workspace: str = "", entity_
 
 def can_admin(user: dict[str, Any]) -> bool:
     return user.get("role") in ADMIN_ROLES
+
+
+def is_management_profile(user: dict[str, Any]) -> bool:
+    return str(user.get("username") or "").casefold() == "takujiyamada"
 
 
 def can_team_reports(user: dict[str, Any]) -> bool:

@@ -1,6 +1,88 @@
 # Seguimiento de cambios
 
-Actualizado el 17 de septiembre de 2026. La fase de facturas múltiples quedó implementada, migrada y validada antes de publicar la versión en la nube.
+Actualizado el 18 de septiembre de 2026. La fase de facturas múltiples quedó implementada, migrada y validada antes de publicar la versión en la nube. Los requisitos siguientes están autorizados para una futura implementación, pero todavía no se han aplicado a la aplicación.
+
+## Cambios pendientes autorizados: periodos, vista Gerencia y seguimiento visual
+
+### Filtros de periodo en Resumen
+
+- [ ] Agregar un selector de periodo que permita elegir **Todo el historial**, **Hoy**, **Mes actual**, **Año fiscal** y **Rango personalizado**.
+- [ ] Definir el año fiscal como el periodo comprendido entre el 1 de abril y la fecha actual. Entre enero y marzo, el inicio debe ser el 1 de abril del año calendario anterior.
+- [ ] En Rango personalizado, solicitar fecha inicial y fecha final, incluir ambos extremos y validar que la fecha final no sea anterior a la inicial.
+- [ ] Mostrar de forma visible el periodo activo y mantener la selección mientras dure la sesión del usuario.
+- [ ] Aplicar el periodo a la cantidad y al importe total de cotizaciones Pending usando la **fecha de la cotización**.
+- [ ] Aplicar el periodo a la cantidad y al importe total de PO usando la **fecha de PO**, calculada actualmente a partir de las facturas asociadas.
+- [ ] Aplicar el periodo a Priority Distribution usando la **fecha de la cotización**.
+- [ ] Actualizar al mismo tiempo las cantidades y los importes de las cuatro prioridades para evitar que los cuadros muestren periodos diferentes.
+- [ ] Mantener las monedas separadas: Follow Up Quotations en USD y Special Quotations en JPY, sin conversión.
+- [ ] Mantener **Todo el historial** como opción explícita para reproducir los totales acumulados actuales.
+
+### Vista exclusiva Gerencia para TAKUJI YAMADA
+
+- [ ] Mantener a TAKUJI YAMADA como Superadmin y conservar su acceso a la administración de Usuarios.
+- [ ] Reemplazar para este perfil las vistas Gestionadas, Seguras, PO sin fecha, PO y Perdidas por una sola vista llamada **Gerencia**.
+- [ ] Eliminar para este perfil la vista Historical/Históricas.
+- [ ] Dejar en su navegación únicamente **Gerencia**, **Reportes** y **Usuarios**, además de los controles generales de espacio, idioma, contraseña y cierre de sesión.
+- [ ] Hacer que Gerencia sea su vista principal al entrar y que reúna, en una sola tabla y sin duplicar filas, todos los registros operativos del espacio seleccionado: Pending, Safe, PO Date Missing, PO y Lost. Los registros Historical/Históricos no deben aparecer.
+- [ ] Permitir en Gerencia búsqueda y filtros por estado, prioridad, agente NT Tool, distribuidor, End User y periodo, además de los ordenamientos útiles de fecha, folio, importe y última actividad.
+- [ ] Mostrar en Gerencia una fila por cotización con estas columnas: prioridad, fecha de cotización, número de cotización, código de distribuidor de tres letras, End User, Orden del cliente, estado, días desde la cotización y última actividad.
+- [ ] Calcular **Días desde la cotización** como días calendario completos entre la fecha de cotización y la fecha actual de la aplicación.
+- [ ] Para Pending, mostrar como Última actividad la fecha y hora de la última revisión guardada. Cuando nunca se haya guardado una revisión, mostrar la fecha de incorporación al sistema e identificarla como alta inicial.
+- [ ] Para PO y Lost, mostrar como Última actividad la fecha y hora del cambio de estado más reciente.
+- [ ] Ocultar únicamente en las listas de TAKUJI YAMADA la columna Agente distribuidor. Mantener ese dato completo dentro de View/Details.
+- [ ] Conservar View/Details para consultar la razón social completa, Agente distribuidor, serie, total neto interno, comentarios, facturas e historial funcional permitido.
+- [ ] Aplicar en Gerencia los indicadores visuales de estado y antigüedad definidos en las secciones siguientes para que pueda identificarse de un vistazo qué cambió y desde cuándo.
+
+### Catálogo de distribuidores por código de tres letras
+
+- [ ] Usar como catálogo inicial el archivo `Listado y directorio de clientes.xls`, hoja `Reporte de Compac`.
+- [ ] Leer únicamente la columna A **Código** y la columna B **Nombre (Cliente)**. En el archivo recibido los encabezados se encuentran en la fila 4 y los datos comienzan en la fila 6.
+- [ ] Importar los 59 pares código–razón social utilizables detectados en el archivo recibido. No se detectaron códigos duplicados en esta versión.
+- [ ] Guardar el catálogo en la base de datos para no depender del archivo de Dropbox durante cada consulta.
+- [ ] Relacionar la razón social del distribuidor recibida en los Excel diarios con el catálogo mediante una comparación normalizada: recortar espacios, comparar sin distinguir mayúsculas/minúsculas y normalizar espacios repetidos. No crear códigos mediante abreviaturas automáticas.
+- [ ] Mostrar en las listas de todos los usuarios únicamente el código de tres letras del distribuidor.
+- [ ] Mantener la razón social completa y el código dentro de View/Details.
+- [ ] Si una razón social no tiene coincidencia inequívoca, mostrar **Sin código** en la lista, conservar la razón social original en View/Details y registrar el caso para corrección del catálogo. No asignar la primera coincidencia aproximada.
+- [ ] Conservar el código ya relacionado en cada cotización aunque se vuelva a cargar un Excel sin cambios, y actualizarlo si el catálogo recibe una correspondencia corregida.
+
+### Organización de Gestionadas para los demás usuarios
+
+- [ ] En la vista Gestionadas, sustituir prioridad y los demás criterios como organización principal por un selector de estado con **Todos**, **Pending**, **Lost** y **PO**.
+- [ ] Cuando se elija un estado, ordenar automáticamente de la última modificación guardada a la más antigua.
+- [ ] En **Todos**, agrupar en el orden Pending, Lost y PO, y dentro de cada grupo ordenar de la última modificación a la más antigua.
+- [ ] Recalcular la posición de una fila inmediatamente después de guardar una revisión o un cambio de estado.
+- [ ] Mantener la búsqueda por texto únicamente como apoyo para localizar un registro concreto; la clasificación funcional de esta vista debe depender del estado y de la última modificación.
+
+### Colores por estado y tiempo sin seguimiento
+
+- [ ] Aplicar esta señalización a las cotizaciones ya gestionadas en Gestionadas y a las mismas filas dentro de Gerencia.
+- [ ] Mostrar en blanco las filas Pending con entre 0 y 8 días calendario desde la última revisión guardada.
+- [ ] Mostrar en naranja las filas Pending con entre 9 y 14 días calendario desde la última revisión guardada.
+- [ ] Mostrar en rojo las filas Pending con 15 días calendario o más desde la última revisión guardada.
+- [ ] Mostrar en verde las filas cuyo estado vigente sea PO.
+- [ ] Mostrar en morado las filas cuyo estado vigente sea Lost.
+- [ ] Considerar como revisión cualquier acción de Manage que se guarde correctamente, aunque el estado continúe en Pending y no cambien otros campos.
+- [ ] Al guardar una revisión Pending, reiniciar a cero el contador de tiempo sin seguimiento y devolver la fila a blanco.
+- [ ] Abrir View/Details sin guardar no debe reiniciar el contador ni alterar los colores.
+- [ ] Mantener suficiente contraste de texto y agregar una etiqueta textual o ayuda accesible para que el significado no dependa únicamente del color.
+
+### Antigüedad total y Stale Quote
+
+- [ ] Mantener separado el contador **Días desde la cotización** del contador **Días sin seguimiento**. El primero parte de la fecha de cotización; el segundo parte de la última revisión guardada.
+- [ ] Cuando una cotización tenga más de 90 días calendario desde su fecha, destacar la celda del número de días con una etiqueta visible `90+ days` o equivalente, sin reemplazar el color de estado de toda la fila.
+- [ ] Al abrir Manage para una cotización de más de 90 días que todavía esté Pending, mostrar una pregunta explícita para confirmar si la operación se perdió.
+- [ ] Si el usuario responde que sí, preseleccionar estado Lost y el nuevo motivo **Stale Quote**, permitiendo que revise la información antes de guardar.
+- [ ] Si responde que no, permitir continuar con la gestión normal sin cambiar automáticamente el estado.
+- [ ] Agregar **Stale Quote** a la lista de motivos de pérdida y mostrarlo en View/Details, listas Lost y reportes igual que los motivos existentes.
+- [ ] No generar una pérdida ni un comentario de pérdida hasta que el usuario guarde Manage.
+
+### Fechas, zona horaria y validación
+
+- [ ] Calcular Hoy, Mes actual, año fiscal, días desde la cotización y días sin seguimiento usando la zona horaria configurada para la operación en México, evitando que Railway/UTC cambie el día cerca de la medianoche.
+- [ ] Agregar pruebas de límites para 8, 9, 14, 15, 90 y 91 días; cambio de año fiscal; rangos inclusivos; PO filtradas por fecha de PO; y reinicio del contador al guardar una revisión.
+- [ ] Probar los filtros y totales por separado en USD y JPY.
+- [ ] Verificar que el catálogo de distribuidores no genere coincidencias ambiguas, que los registros sin código permanezcan accesibles y que la razón social completa siga disponible en View/Details.
+- [ ] Verificar los permisos y la navegación especial de TAKUJI YAMADA sin modificar la experiencia ni los permisos de los demás Superadmin, User y Secretadmin.
 
 ## Cambios implementados: interfaz y registro de PO con múltiples facturas
 
