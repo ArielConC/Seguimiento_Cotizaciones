@@ -86,10 +86,29 @@ $('#login-form').addEventListener('submit',async e=>{e.preventDefault();$('#logi
 $('#logout-button').addEventListener('click',async()=>{try{await api('/api/auth/logout',{method:'POST'});}catch(_){}state.me=null;state.system=null;showLogin(false);});
 $('#language-select').addEventListener('change',async()=>{state.language=$('#language-select').value;applyLanguage();try{state.me=await api('/api/me/preferences',{method:'PATCH',body:JSON.stringify({language:state.language})});await navigate(state.view);}catch(e){toast(e.message,true);}});
 
-async function selectSystem(system){state.system=system;$('#system-dialog').close();$('#system-button').textContent=system==='special'?'Special Quotations (JPY)':'Follow Up Quotations (USD)';$$('.special-only').forEach(e=>e.classList.toggle('hidden',system!=='special'));$$('.standard-only').forEach(e=>e.classList.toggle('hidden',system==='special'));renderLegend();await Promise.all([loadAgents(),loadRanks()]);await navigate(state.me?.management_profile?'management':'dashboard');}$$('[data-system]').forEach(b=>b.addEventListener('click',()=>selectSystem(b.dataset.system).catch(e=>toast(e.message,true))));
+async function selectSystem(system){
+  state.system=system;
+  $('#system-dialog').close();
+  $('#system-button').textContent=system==='special'?'Special Quotations (JPY)':'Follow Up Quotations (USD)';
+  $$('.special-only').forEach(e=>e.classList.toggle('hidden',system!=='special'));
+  $$('.standard-only').forEach(e=>e.classList.toggle('hidden',system==='special'));
+
+  //LINEA NUEVA: Ocultar vistas no permitidas para el perfil directivo
+  if(state.me?.management_profile)$$('.regular-nav').forEach(e=>e.classList.add('hidden'));
+  renderLegend();
+  await Promise.all([loadAgents(),loadRanks()]);
+  await navigate(state.me?.management_profile?'management':'dashboard');
+}
+$$('[data-system]').forEach(b=>b.addEventListener('click',()=>selectSystem(b.dataset.system).catch(e=>toast(e.message,true))));
 $('#system-button').addEventListener('click',()=>$('#system-dialog').showModal());
-function updateSidebarButton(){const collapsed=$('#app').classList.contains('sidebar-collapsed');$('#sidebar-toggle').setAttribute('aria-expanded',String(!collapsed));$('#sidebar-toggle').setAttribute('aria-label',t(collapsed?'show_navigation':'hide_navigation'));}
-function setSidebarCollapsed(collapsed){$('#app').classList.toggle('sidebar-collapsed',collapsed);sessionStorage.setItem('ntQuoteSidebarCollapsed',collapsed?'1':'0');updateSidebarButton();}
+function updateSidebarButton(){const collapsed=$('#app').classList.contains('sidebar-collapsed');
+  $('#sidebar-toggle').setAttribute('aria-expanded',String(!collapsed));
+  $('#sidebar-toggle').setAttribute('aria-label',t(collapsed?'show_navigation':'hide_navigation'));
+}
+function setSidebarCollapsed(collapsed){
+  $('#app').classList.toggle('sidebar-collapsed',collapsed);
+  sessionStorage.setItem('ntQuoteSidebarCollapsed',collapsed?'1':'0');updateSidebarButton();
+}
 $('#sidebar-toggle').addEventListener('click',()=>setSidebarCollapsed(!$('#app').classList.contains('sidebar-collapsed')));
 setSidebarCollapsed(sessionStorage.getItem('ntQuoteSidebarCollapsed')==='1');
 const savedPeriod=sessionStorage.getItem('ntQuoteDashboardPeriod')||'all';
@@ -107,8 +126,15 @@ $('#dashboard-period').addEventListener('change',()=>periodChanged().catch(e=>to
 $('#dashboard-start').addEventListener('change',()=>periodChanged().catch(e=>toast(e.message,true)));
 $('#dashboard-end').addEventListener('change',()=>periodChanged().catch(e=>toast(e.message,true)));
 
-async function loadAgents(){const agents=await api(`${prefix()}/agents`);const current=$('#global-agent').value;$('#global-agent').innerHTML=`<option value="">${t('all_agents')}</option>`+agents.map(a=>`<option ${a===current?'selected':''}>${esc(a)}</option>`).join('');if(!current&&state.me?.role==='user'){const match=agents.find(a=>a.toLowerCase().startsWith((state.me.agent_name||'').split(' ')[0].toLowerCase()));if(match)$('#global-agent').value=match;}}
-async function loadRanks(){if(state.system!=='special')return;const ranks=await api('/api/special/ranks');$('#rank-filter').innerHTML='<option value="">All</option>'+ranks.map(r=>`<option>${esc(r)}</option>`).join('');}
+async function loadAgents(){const agents=await api(`${prefix()}/agents`);
+const current=$('#global-agent').value;
+$('#global-agent').innerHTML=`<option value="">${t('all_agents')}</option>`+agents.map(a=>`<option ${a===current?'selected':''}>${esc(a)}</option>`).join('');
+if(!current&&state.me?.role==='user'){const match=agents.find(a=>a.toLowerCase().startsWith((state.me.agent_name||'').split(' ')[0].toLowerCase()));
+  if(match)$('#global-agent').value=match;
+}
+}
+async function loadRanks(){if(state.system!=='special')return;const ranks=await api('/api/special/ranks');
+  $('#rank-filter').innerHTML='<option value="">All</option>'+ranks.map(r=>`<option>${esc(r)}</option>`).join('');}
 
 async function navigate(view){
   if(state.me?.management_profile&&!['management','reports','users'].includes(view))view='management';
@@ -127,7 +153,11 @@ $$('.nav-item').forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.vie
 $$('[data-go]').forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.go)));
 $('#global-agent').addEventListener('change',()=>navigate(state.view).catch(e=>toast(e.message,true)));
 
-async function updateGlobalTotal(){if(!state.system)return;const data=await api(`${prefix()}/dashboard?${dashboardQuery()}`);$('#global-pending-total').textContent=money(data.counts.pending_value);$('#global-po-total').textContent=money(data.counts.po_value);}
+async function updateGlobalTotal(){if(!state.system)return;
+  const data=await api(`${prefix()}/dashboard?${dashboardQuery()}`);
+  $('#global-pending-total').textContent=money(data.counts.pending_value);
+  $('#global-po-total').textContent=money(data.counts.po_value);
+}
 async function renderDashboard(){const [data,rows]=await Promise.all([api(`${prefix()}/dashboard?${dashboardQuery()}`),api(`${prefix()}/quotes?${dashboardQuery({status:'pending',safe:'0',order:'priority'})}`)]);const c=data.counts;
   $('#kpis').innerHTML=[ [data.added_today,t('added_today'),'blue'],[c.pending||0,t('pending'),'orange'],[data.overdue_count,t('overdue'),'red'],[data.po_today,t('po_today'),'green'] ].map(([v,l,cl])=>`<div class="kpi ${cl}"><span>${l}</span><strong>${v}</strong><small>${t('quotations')}</small></div>`).join('');
   const by=Object.fromEntries(data.priorities.map(x=>[x.priority,x]));$('#priority-summary').innerHTML='SABC'.split('').map(p=>{const x=by[p]||{count:0,value:0};return `<div class="priority-card"><span class="priority ${p.toLowerCase()}">${p}</span><strong>${money(x.value)}</strong><small>${x.count} ${t('quotations')}</small></div>`}).join('');
@@ -259,7 +289,13 @@ async function openManage(id) {
 function toggleManage(){const s=$('#manage-status').value;$('#manage-dialog').classList.toggle('po-mode',s==='po');$('#loss-wrap').classList.toggle('hidden',s!=='lost');$('#po-fields').classList.toggle('hidden',s!=='po');$('#safe-wrap').classList.toggle('hidden',s!=='pending');$('#manage-comment-wrap').classList.toggle('hidden',s==='po');$('#manage-loss').required=s==='lost';if(s==='po'&&!$$('.invoice-row').length)renderInvoiceRows([{}]);$$('.invoice-row input').forEach(input=>input.required=s==='po');}$('#manage-status').addEventListener('change',toggleManage);
 $('#manage-form').addEventListener('submit',async e=>{e.preventDefault();try{const status=$('#manage-status').value;await api(`${prefix()}/quotes/${state.quote.id}`,{method:'PATCH',body:JSON.stringify({status,follow_up_type:$('#manage-method').value,is_safe:$('#manage-safe').checked,loss_reason:$('#manage-loss').value,comment:status==='po'?'':$('#manage-comment').value,invoices:status==='po'?invoicePayload():[]})});$('#manage-dialog').close();toast(state.language==='es'?'Seguimiento guardado':'Follow-up saved');await navigate(state.view);}catch(err){toast(err.message,true);}});
 
-let searchTimer;$('#quote-search').addEventListener('input',()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>renderList().catch(e=>toast(e.message,true)),250);});$('#priority-filter').addEventListener('change',()=>renderList());$('#rank-filter').addEventListener('change',()=>renderList());$('#quote-order').addEventListener('change',()=>renderList());
+let searchTimer;$('#quote-search').addEventListener('input',()=>{clearTimeout(searchTimer);
+  searchTimer=setTimeout(()=>renderList().catch(e=>toast(e.message,true)),250);
+});
+$('#priority-filter').addEventListener('change',()=>renderList());
+$('#rank-filter').addEventListener('change',()=>renderList());
+$('#quote-order').addEventListener('change',()=>renderList());
+$('status-filter').addEventListener('change',()=>renderList());
 
 function setPreset(kind){const today=new Date();let start=new Date(today);if(kind==='weekly'){const day=(today.getDay()+6)%7;start.setDate(today.getDate()-day);}if(kind==='monthly')start=new Date(today.getFullYear(),today.getMonth(),1);const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;if(kind!=='custom'){$('#report-start').value=iso(start);$('#report-end').value=iso(today);}} $$('.report-preset').forEach(b=>b.addEventListener('click',async()=>{setPreset(b.dataset.period);if(b.dataset.period!=='custom')await renderReport();}));$('#dashboard-report').addEventListener('click',()=>{setPreset('daily');navigate('reports');});
 function reportQuery(){return new URLSearchParams({start:$('#report-start').value,end:$('#report-end').value,scope:$('#report-scope').value,agent:$('#global-agent').value,language:state.language});}
