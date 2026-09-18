@@ -295,7 +295,7 @@ let searchTimer;$('#quote-search').addEventListener('input',()=>{clearTimeout(se
 $('#priority-filter').addEventListener('change',()=>renderList());
 $('#rank-filter').addEventListener('change',()=>renderList());
 $('#quote-order').addEventListener('change',()=>renderList());
-$('status-filter').addEventListener('change',()=>renderList());
+$('#status-filter').addEventListener('change',()=>renderList());
 
 function setPreset(kind){const today=new Date();let start=new Date(today);if(kind==='weekly'){const day=(today.getDay()+6)%7;start.setDate(today.getDate()-day);}if(kind==='monthly')start=new Date(today.getFullYear(),today.getMonth(),1);const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;if(kind!=='custom'){$('#report-start').value=iso(start);$('#report-end').value=iso(today);}} $$('.report-preset').forEach(b=>b.addEventListener('click',async()=>{setPreset(b.dataset.period);if(b.dataset.period!=='custom')await renderReport();}));$('#dashboard-report').addEventListener('click',()=>{setPreset('daily');navigate('reports');});
 function reportQuery(){return new URLSearchParams({start:$('#report-start').value,end:$('#report-end').value,scope:$('#report-scope').value,agent:$('#global-agent').value,language:state.language});}
