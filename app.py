@@ -21,6 +21,7 @@ import auth
 import backup
 import database
 import imports_manager
+import invoice_manager #<-------- NUEVA LÍNEA
 import special
 from reports import build_report_pdf, build_report_xlsx
 
@@ -191,6 +192,16 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(imports_manager.preview(workspace,content,str(payload.get("filename") or "quotations.xlsx"),user),HTTPStatus.CREATED)
             elif parsed.path in {"/api/import/confirm","/api/special/import/confirm"}:
                 workspace="special" if "/special/" in parsed.path else "standard"; payload=self._read_json(); self._json(imports_manager.confirm(workspace,str(payload.get("token","")),user),HTTPStatus.CREATED)
+            
+            # --- NUEVO CÓDIGO PARA FACTURAS ---
+            elif parsed.path in {"/api/import/invoices", "/api/special/import/invoices"}:
+                workspace = "special" if "/special/" in parsed.path else "standard"
+                payload = self._read_json(35_000_000)
+                try: content = base64.b64decode(str(payload.get("content_base64", "")), validate=True)
+                except Exception as exc: raise ValueError("El archivo Excel es inválido") from exc
+                self._json(invoice_manager.sync_invoices(workspace, content, user), HTTPStatus.CREATED)
+            # ----------------------------------
+
             elif parsed.path=="/api/users": self._json(auth.create_user(user,self._read_json()),HTTPStatus.CREATED)
             elif parsed.path=="/api/backup/run":
                 if not auth.can_admin(user): raise PermissionError("Administrator permission required")
