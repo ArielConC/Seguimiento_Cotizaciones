@@ -33,8 +33,13 @@
         <div class="topbar-actions">
           <button id="system-button" class="button ghost">Workspace</button>
           <label><span data-i18n="agent">NT Tool agent</span><select id="global-agent"><option value="">All agents</option></select></label>
-          <label><span data-i18n="language">Language</span><select id="language-select"><option value="en">English</option><option value="es">Español</option><option value="ja">日本語</option></select>
-          <button id="upload-button" class="button primary" data-i18n="upload_excel">Upload Excel</button>
+          <label><span data-i18n="language">Language</span><select id="language-select"><option value="en">English</option><option value="es">Español</option><option value="ja">日本語</option></select></label>
+<button id="upload-button" class="button primary" data-i18n="upload_excel">Upload Excel</button>
+
+<!-- NUEVO BOTÓN DE FACTURAS -->
+<input type="file" id="file-invoices" accept=".xlsx, .xls" style="display: none;">
+<button id="btn-open-invoices" class="button" style="margin-left: 5px; background-color: #10b981; color: white; border: none;">Subir Factura</button>
+<!-- ----------------------- -->
           <div class="user-menu"><strong id="user-name"></strong></div>
           <button id="password-button" class="button ghost" data-i18n="change_password">Change password</button>
           <button id="logout-button" class="button ghost" data-i18n="logout">Log out</button>
@@ -129,6 +134,25 @@
 
   <dialog id="user-edit-dialog"><form id="user-edit-form" class="dialog-content"><div class="dialog-heading"><div><h2 data-i18n="edit_user">Edit user</h2><p id="edit-username" class="section-help"></p></div><button type="button" class="icon-button dialog-close">×</button></div><input id="edit-user-id" type="hidden"><label data-i18n="display_name">Display name<input id="edit-name" required></label><label data-i18n="agent">Agent<input id="edit-agent"></label><label class="check"><input id="edit-active" type="checkbox"><span data-i18n="active">Active</span></label><label data-i18n="temporary_password">Temporary password<input id="edit-password" type="text" minlength="10" placeholder="Leave blank to keep current password" autocomplete="off"></label><button id="generate-edit-password" class="button ghost" type="button" data-i18n="generate_password">Generate temporary password</button><p id="temporary-password-help" class="section-help" data-i18n="temporary_password_help">Copy the password before saving. The user will be asked to replace it at the next login.</p><button class="button primary" data-i18n="save">Save</button></form></dialog>
   <dialog id="password-dialog"><form id="password-form" class="dialog-content"><div class="dialog-heading"><h2 data-i18n="change_password">Change password</h2><button type="button" class="icon-button dialog-close">×</button></div><p id="password-notice" class="section-help"></p><label data-i18n="current_password">Current password<input id="current-password" type="password" required></label><label data-i18n="new_password">New password<input id="new-own-password" type="password" minlength="10" required></label><button class="button primary" data-i18n="change_password">Change password</button></form></dialog>
+  <dialog id="invoice-dialog">
+  <form id="invoice-form" class="dialog-content">
+    <div class="dialog-heading">
+      <div>
+        <p class="eyebrow" style="color: #10b981;">IMPORTAR DATOS</p>
+        <h2>Subir Facturas de PO</h2>
+      </div>
+      <button type="button" class="icon-button dialog-close">×</button>
+    </div>
+    <p class="section-help">El Excel debe contener las columnas del sistema: Fila A (Fecha), B (Serie), C (Folio), E (Total) y N (Texto Extra 2 con la orden del cliente).</p>
+    <label>Excel de Facturas<input id="invoice-file" type="file" accept=".xlsx, .xls" required></label>
+    <div id="invoice-preview-container" class="hidden"></div>
+    <div class="dialog-actions">
+      <button type="button" class="button ghost dialog-close">Cancelar</button>
+      <button id="preview-invoice-btn" class="button primary" type="submit" style="background-color: #10b981; border-color: #10b981;">Vista previa</button>
+      <button id="confirm-invoice-btn" class="button primary hidden" type="button" style="background-color: #10b981; border-color: #10b981;">Confirmar importación</button>
+    </div>
+  </form>
+</dialog>
   <script src="/static/app.js?v=20260918.1" defer></script>
 </body>
 </html>

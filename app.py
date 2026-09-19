@@ -193,14 +193,19 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path in {"/api/import/confirm","/api/special/import/confirm"}:
                 workspace="special" if "/special/" in parsed.path else "standard"; payload=self._read_json(); self._json(imports_manager.confirm(workspace,str(payload.get("token","")),user),HTTPStatus.CREATED)
             
-            # --- NUEVO CÓDIGO PARA FACTURAS ---
-            elif parsed.path in {"/api/import/invoices", "/api/special/import/invoices"}:
+            # --- RUTAS PARA FACTURAS (VISTA PREVIA Y CONFIRMAR) ---
+            elif parsed.path in {"/api/import/invoices/preview", "/api/special/import/invoices/preview"}:
                 workspace = "special" if "/special/" in parsed.path else "standard"
                 payload = self._read_json(35_000_000)
                 try: content = base64.b64decode(str(payload.get("content_base64", "")), validate=True)
                 except Exception as exc: raise ValueError("El archivo Excel es inválido") from exc
-                self._json(invoice_manager.sync_invoices(workspace, content, user), HTTPStatus.CREATED)
-            # ----------------------------------
+                self._json(invoice_manager.preview(workspace, content, str(payload.get("filename", "")), user), HTTPStatus.CREATED)
+                
+            elif parsed.path in {"/api/import/invoices/confirm", "/api/special/import/invoices/confirm"}:
+                workspace = "special" if "/special/" in parsed.path else "standard"
+                payload = self._read_json()
+                self._json(invoice_manager.confirm(workspace, str(payload.get("token", "")), user), HTTPStatus.CREATED)
+            # ------------------------------------------------------
 
             elif parsed.path=="/api/users": self._json(auth.create_user(user,self._read_json()),HTTPStatus.CREATED)
             elif parsed.path=="/api/backup/run":

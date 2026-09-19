@@ -411,3 +411,92 @@ $('#password-button').addEventListener('click',()=>{$('#password-notice').textCo
 $('#password-form').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/me/password',{method:'PATCH',body:JSON.stringify({current_password:$('#current-password').value,new_password:$('#new-own-password').value})});state.me.must_change_password=0;$('#password-dialog').close();toast(t('change_password'));}catch(err){toast(err.message,true);}});  $$('.dialog-close').forEach(b=>b.addEventListener('click',()=>b.closest('dialog').close()));
 
 (async function init(){try{const status=await api('/api/auth/status');const me=await api('/api/me').catch(()=>null);if(me){state.me=me;state.language=me.language||'en';$('#login-language').value=state.language;await enterApp(me);}else showLogin(status.bootstrap_required);}catch(e){showLogin(false);$('#login-error').textContent=e.message;}})();
+
+
+// --- NUEVO: Facturas con Vista Previa (Panel Verde) ---
+const btnOpenInvoices = document.getElementById('btn-open-invoices');
+const invoiceDialog = document.getElementById('invoice-dialog');
+const invoiceForm = document.getElementById('invoice-form');
+const invoiceFile = document.getElementById('invoice-file');
+const invoicePreviewContainer = document.getElementById('invoice-preview-container');
+const previewInvoiceBtn = document.getElementById('preview-invoice-btn');
+const confirmInvoiceBtn = document.getElementById('confirm-invoice-btn');
+let currentInvoiceToken = null;
+
+if (btnOpenInvoices && invoiceDialog) {
+  // Abrir panel
+  btnOpenInvoices.addEventListener('click', () => {
+    invoiceForm.reset();
+    invoicePreviewContainer.innerHTML = '';
+    invoicePreviewContainer.classList.add('hidden');
+    confirmInvoiceBtn.classList.add('hidden');
+    previewInvoiceBtn.classList.remove('hidden');
+    invoiceFile.disabled = false;
+    invoiceDialog.showModal();
+  });
+
+  // Paso 1: Vista Previa
+  invoiceForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const file = invoiceFile.files[0];
+    if (!file) return;
+
+    const originalText = previewInvoiceBtn.innerText;
+    previewInvoiceBtn.innerText = 'Cargando...';
+    previewInvoiceBtn.disabled = true;
+
+    try {
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+      });
+
+      const endpoint = state.system === 'special' ? '/api/special/import/invoices/preview' : '/api/import/invoices/preview';
+      const res = await api(endpoint, 'POST', { content_base64: base64, filename: file.name });
+
+      currentInvoiceToken = res.token;
+      invoicePreviewContainer.innerHTML = res.preview_html;
+      invoicePreviewContainer.classList.remove('hidden');
+      
+      previewInvoiceBtn.classList.add('hidden');
+      confirmInvoiceBtn.classList.remove('hidden');
+      invoiceFile.disabled = true;
+
+    } catch (err) {
+      alert('Error al leer Excel: ' + err.message);
+    } finally {
+      previewInvoiceBtn.innerText = originalText;
+      previewInvoiceBtn.disabled = false;
+    }
+  });
+
+  // Paso 2: Confirmar
+  confirmInvoiceBtn.addEventListener('click', async () => {
+    if (!currentInvoiceToken) return;
+    const originalText = confirmInvoiceBtn.innerText;
+    confirmInvoiceBtn.innerText = 'Guardando...';
+    confirmInvoiceBtn.disabled = true;
+
+    try {
+      const endpoint = state.system === 'special' ? '/api/special/import/invoices/confirm' : '/api/import/invoices/confirm';
+      const res = await api(endpoint, 'POST', { token: currentInvoiceToken });
+      
+      alert(res.message);
+      invoiceDialog.close();
+      await loadData(); // Recargar tablas y números
+    } catch (err) {
+      alert('Error al confirmar: ' + err.message);
+    } finally {
+      confirmInvoiceBtn.innerText = originalText;
+      confirmInvoiceBtn.disabled = false;
+    }
+  });
+  
+  // Botones de cerrar
+  invoiceDialog.querySelectorAll('.dialog-close').forEach(btn => {
+    btn.addEventListener('click', () => invoiceDialog.close());
+  });
+}
+// ------------------------------------------------------
