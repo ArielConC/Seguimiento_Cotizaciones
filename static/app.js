@@ -326,7 +326,14 @@ function quoteTable(rows, compact = false, managed = false) {
 
   return `<table><thead>${headUSD}</thead><tbody>${bodyUSD}</tbody></table>${managed ? trackingLegend() : ''}`;
 }
-function statusBadges(q){return `<span class="status ${q.status}">${statusLabel(q.status)}</span>${q.is_safe?`<span class="safe-badge">${t('safe')}</span>`:''}${q.po_detected&&!q.po_date?`<span class="warning-badge">${t('po_missing')}</span>`:''}${q.is_historical?`<span class="history-badge">${t('read_only')}</span>`:''}${q.is_archived?`<span class="history-badge">${t('archive')}</span>`:''}`;}
+function statusBadges(q) {
+  return `<span class="status ${q.status}">${statusLabel(q.status)}</span>` +
+         `${q.has_invoices ? `<span class="safe-badge" style="background-color: #17a2b8; color: white;">📊 Excel</span>` : ''}` +
+         `${q.is_safe ? `<span class="safe-badge">${t('safe')}</span>` : ''}` +
+         `${q.po_detected && !q.po_date ? `<span class="warning-badge">${t('po_missing')}</span>` : ''}` +
+         `${q.is_historical ? `<span class="history-badge">${t('read_only')}</span>` : ''}` +
+         `${q.is_archived ? `<span class="history-badge">${t('archive')}</span>` : ''}`;
+}
 function wireRows(){$$('.view-btn').forEach(b=>b.addEventListener('click',()=>openView(Number(b.dataset.id))));$$('.manage-btn').forEach(b=>b.addEventListener('click',()=>openManage(Number(b.dataset.id))));$$('.restore-btn').forEach(b=>b.addEventListener('click',()=>restoreQuote(Number(b.dataset.id))));}
 async function restoreQuote(id){try{await api(`/api/special/archive/${id}/restore`,{method:'POST'});toast(t('restore'));await renderList();}catch(e){toast(e.message,true);}}
 
@@ -522,7 +529,7 @@ invoiceForm?.addEventListener('submit',async event=>{
     invoicePreviewContainer.classList.remove('hidden');
     previewInvoiceBtn.classList.add('hidden');
     confirmInvoiceBtn.classList.remove('hidden');
-    confirmInvoiceBtn.disabled=Number(result.new||0)===0;
+    confirmInvoiceBtn.disabled= (Array.isArray(result.new)? result.new.length : Number(result.new || 0)) ===0;
     invoiceFile.disabled=true;
   }catch(error){
     toast(error.message,true);

@@ -206,13 +206,16 @@ def preview(workspace: str, content: bytes, filename: str, user: dict[str, Any])
     result_rows: list[dict[str, Any]] = []
     upload_seen: dict[tuple[int, str, str], dict[str, Any]] = {}
     counts = {"new": 0, "duplicate": 0, "unmatched": 0, "ambiguous": 0, "not_po": 0, "invalid": len(errors)}
+    
     for row in parsed:
         candidates = matches.get(_normalize(row["customer_order"]), [])
+        # CAMBIO 1: Aceptamos CUALQUIER cotización Pendiente (tenga o no po_detected) que no tenga fecha PO
         po_candidates = [
             quote for quote in candidates
-            if quote["status"] == "pending" and int(quote["po_detected"] or 0) == 1 and not quote["po_date"]
+            if quote["status"] == "pending" and not quote["po_date"]
         ]
         result = {**row, "quote_folio": "", "status": ""}
+        
         if not candidates:
             result["status"] = "unmatched"
             counts["unmatched"] += 1
@@ -220,28 +223,34 @@ def preview(workspace: str, content: bytes, filename: str, user: dict[str, Any])
             result["status"] = "not_po"
             result["quote_folio"] = candidates[0]["folio"]
             counts["not_po"] += 1
-        elif len(po_candidates) != 1:
-            result["status"] = "ambiguous"
-            counts["ambiguous"] += 1
         else:
-            quote = po_candidates[0]
-            quote_id = int(quote["id"])
-            result["quote_folio"] = quote["folio"]
-            key = (quote_id, _normalize(row["invoice_series"]), _normalize(row["invoice_number"]))
-            if key in upload_seen:
-                prior = upload_seen[key]
-                same = prior["invoice_date"] == row["invoice_date"] and abs(float(prior["amount"]) - float(row["amount"])) < 0.005
-                result["status"] = "duplicate" if same else "conflict"
-                counts["duplicate" if same else "ambiguous"] += 1
-            elif key[1:] in existing.get(quote_id, set()):
+            # CAMBIO 2: Si hay varias cotizaciones con la misma PO, inyectamos la factura a TODAS
+            added_to_any = False
+            is_duplicate = False
+            
+            for quote in po_candidates:
+                quote_id = int(quote["id"])
+                key = (quote_id, _normalize(row["invoice_series"]), _normalize(row["invoice_number"]))
+                
+                if key in upload_seen:
+                    prior = upload_seen[key]
+                    if prior["invoice_date"] == row["invoice_date"] and abs(float(prior["amount"]) - float(row["amount"])) < 0.005:
+                        is_duplicate = True
+                elif key[1:] in existing.get(quote_id, set()):
+                    is_duplicate = True
+                else:
+                    upload_seen[key] = row
+                    new_records.append({**row, "quote_id": quote_id, "quote_folio": quote["folio"]})
+                    added_to_any = True
+            
+            if added_to_any:
+                result["status"] = "new"
+                result["quote_folio"] = po_candidates[0]["folio"] + (" (Varias)" if len(po_candidates) > 1 else "")
+                counts["new"] += 1
+            else:
                 result["status"] = "duplicate"
                 counts["duplicate"] += 1
-            else:
-                upload_seen[key] = row
-                result["status"] = "new"
-                result["quote_id"] = quote_id
-                counts["new"] += 1
-                new_records.append({**row, "quote_id": quote_id, "quote_folio": quote["folio"]})
+                result["quote_folio"] = po_candidates[0]["folio"]
         result_rows.append(result)
 
     token = secrets.token_urlsafe(24)
@@ -256,7 +265,6 @@ def preview(workspace: str, content: bytes, filename: str, user: dict[str, Any])
     auth.audit(user, "invoice_import_previewed", workspace, "invoice_import", token,
                f"{filename}: {counts['new']} new, {counts['duplicate']} duplicate, {counts['unmatched']} unmatched")
     return {"token": token, "filename": filename, **preview_data}
-
 
 def confirm(workspace: str, token: str, user: dict[str, Any]) -> dict[str, Any]:
     if workspace != "standard":
@@ -284,8 +292,10 @@ def confirm(workspace: str, token: str, user: dict[str, Any]) -> dict[str, Any]:
 
         for quote_id, incoming in grouped.items():
             quote = db.execute("SELECT * FROM quotes WHERE id=?", (quote_id,)).fetchone()
-            if not quote or quote["status"] != "pending" or not int(quote["po_detected"] or 0) or quote["po_date"]:
+            # CAMBIO 3: Quitamos la restricción de po_detected al confirmar
+            if not quote or quote["status"] != "pending" or quote["po_date"]:
                 continue
+            
             current = po_invoices.active(db, "quote_invoices", quote_id)
             actual = [row for row in current if not int(row.get("is_legacy") or 0)]
             if len(actual) != len(current):
