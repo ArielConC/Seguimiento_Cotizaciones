@@ -454,8 +454,13 @@ if (btnOpenInvoices && invoiceDialog) {
       });
 
       const endpoint = state.system === 'special' ? '/api/special/import/invoices/preview' : '/api/import/invoices/preview';
-      const res = await api(endpoint, 'POST', { content_base64: base64, filename: file.name });
-
+      const request = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content_base64: base64, filename: file.name })
+});
+const res = await request.json();
+if (!request.ok) throw new Error(res.error || 'Error en el servidor');
       currentInvoiceToken = res.token;
       invoicePreviewContainer.innerHTML = res.preview_html;
       invoicePreviewContainer.classList.remove('hidden');
@@ -481,7 +486,13 @@ if (btnOpenInvoices && invoiceDialog) {
 
     try {
       const endpoint = state.system === 'special' ? '/api/special/import/invoices/confirm' : '/api/import/invoices/confirm';
-      const res = await api(endpoint, 'POST', { token: currentInvoiceToken });
+      const request = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: currentInvoiceToken })
+});
+const res = await request.json();
+if (!request.ok) throw new Error(res.error || 'Error en el servidor');
       
       alert(res.message);
       invoiceDialog.close();
