@@ -299,8 +299,10 @@ def update_user(requester: dict[str, Any], user_id: int, payload: dict[str, Any]
         agent=str(payload.get("agent_name",current["agent_name"])).strip()
         language=str(payload.get("language",current["language"])); language=language if language in {"en","es"} else "en"
         
-        # --- NUEVO: Capturar y guardar el perfil si quien edita es el secretadmin ---
-        is_manager = current.get("is_manager", 0)
+        # --- CORRECCIÓN: Convertir a diccionario antes de usar .get() ---
+        current_dict = dict(current)
+        is_manager = current_dict.get("is_manager", 0)
+        
         if requester.get("role") == "secretadmin" and "management_profile" in payload:
             is_manager = int(bool(payload["management_profile"]))
             
