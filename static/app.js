@@ -81,7 +81,104 @@ function eventLabel(s){return ({created:state.language==='es'?'Creada':'Created'
 function renderLegend(){if(!state.system)return;$('#priority-legend').innerHTML=state.system==='special'?`<p>${t('priority')}</p><div><b class="priority s">S</b><small>Top 10%</small></div><div><b class="priority a">A</b><small>11–30%</small></div><div><b class="priority b">B</b><small>31–60%</small></div><div><b class="priority c">C</b><small>61–100%</small></div>`:`<p>${t('priority')}</p><div><b class="priority s">S</b><small>USD 5,001+</small></div><div><b class="priority a">A</b><small>USD 1,001–5,000</small></div><div><b class="priority b">B</b><small>USD 501–1,000</small></div><div><b class="priority c">C</b><small>USD 0–500</small></div>`;}
 
 function showLogin(bootstrap){state.bootstrap=bootstrap;$('#app').classList.add('hidden');$('#login-subtitle').textContent=bootstrap?t('initial_setup'):t('signin');$('#login-submit').textContent=bootstrap?(state.language==='es'?'Crear Superadmin':'Create Superadmin'):t('signin');$('#bootstrap-note').classList.toggle('hidden',!bootstrap);$('#bootstrap-note').textContent=bootstrap?t('initial_setup'):'';$('#login-dialog').showModal();}
-async function enterApp(user){state.me=user;state.language=$('#login-language').value||user.language||'en';applyLanguage();$('#user-name').textContent=user.display_name;$('#app').classList.remove('hidden');$('#login-dialog').close();$$('.admin-only').forEach(e=>e.classList.toggle('hidden',!user.can_admin_users));$$('.audit-only').forEach(e=>e.classList.toggle('hidden',!user.can_view_audit));$$('.regular-nav').forEach(e=>e.classList.toggle('hidden',!!user.management_profile));$$('.manager-only').forEach(e=>e.classList.toggle('hidden',!user.management_profile));$('#upload-button').classList.toggle('hidden',!user.can_edit);$$('.invoice-import-only').forEach(e=>e.classList.toggle('hidden',!user.can_edit));$('#report-scope').options[1].disabled=!user.can_team_reports;$('#system-dialog').showModal();if(user.must_change_password){$('#password-notice').textContent=state.language==='es'?'Debes reemplazar la contraseña temporal antes de continuar.':'Replace the temporary password before continuing.';$('#password-dialog').showModal();}}
+// --- NUEVA FUNCIÓN: Botón flotante para SecretAdmin ---
+function setupSecretAdminToggle() {
+    // Si no eres SecretAdmin, nos aseguramos de que no exista el botón
+    if (state.me?.role?.toLowerCase() !== 'secretadmin') {
+        if (document.getElementById('secretadmin-view-toggle')) {
+            document.getElementById('secretadmin-view-toggle').style.display = 'none';
+        }
+        return;
+    }
+
+    let toggleBtn = document.getElementById('secretadmin-view-toggle');
+    if (!toggleBtn) {
+        // Creamos el botón flotante
+        toggleBtn = document.createElement('button');
+        toggleBtn.id = 'secretadmin-view-toggle';
+        toggleBtn.style.position = 'fixed';
+        toggleBtn.style.bottom = '20px';
+        toggleBtn.style.right = '20px';
+        toggleBtn.style.zIndex = '9999';
+        toggleBtn.style.padding = '12px 20px';
+        toggleBtn.style.borderRadius = '30px';
+        toggleBtn.style.border = 'none';
+        toggleBtn.style.fontWeight = 'bold';
+        toggleBtn.style.cursor = 'pointer';
+        toggleBtn.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
+        toggleBtn.style.transition = 'all 0.3s ease';
+        document.body.appendChild(toggleBtn);
+        
+        // Lo que pasa cuando haces clic
+        toggleBtn.addEventListener('click', async () => {
+            // Cambiamos tu estado de forma local (sin tocar la BD)
+            state.me.management_profile = !state.me.management_profile;
+            updateToggleUI();
+            
+            // Ocultamos/Mostramos las pestañas de navegación al vuelo
+            $$('.regular-nav').forEach(e => e.classList.toggle('hidden', !!state.me.management_profile));
+            $$('.manager-only').forEach(e => e.classList.toggle('hidden', !state.me.management_profile));
+            
+            // Te mandamos a la pantalla correcta
+            if (state.system) {
+                await navigate(state.me.management_profile ? 'management' : 'dashboard');
+            }
+        });
+    }
+    
+    // Función para cambiar los colores del botón dependiendo la vista
+    function updateToggleUI() {
+        toggleBtn.innerHTML = state.me.management_profile ? '👀 Vista: MANAGER' : '👀 Vista: DEVELOPER';
+        toggleBtn.style.background = state.me.management_profile ? '#d97706' : '#2563eb'; // Naranja o Azul
+        toggleBtn.style.color = '#fff';
+    }
+    
+    updateToggleUI();
+    toggleBtn.style.display = 'block';
+}
+
+// --- REEMPLAZO: Conectamos el botón al inicio de sesión ---
+async function enterApp(user){
+  state.me=user;
+  state.language=$('#login-language').value||user.language||'en';
+  applyLanguage();
+  $('#user-name').textContent=user.display_name;
+  $('#app').classList.remove('hidden');
+  $('#login-dialog').close();
+  $$('.admin-only').forEach(e=>e.classList.toggle('hidden',!user.can_admin_users));
+  $$('.audit-only').forEach(e=>e.classList.toggle('hidden',!user.can_view_audit));
+  $$('.regular-nav').forEach(e=>e.classList.toggle('hidden',!!user.management_profile));
+  $$('.manager-only').forEach(e=>e.classList.toggle('hidden',!user.management_profile));
+  $('#upload-button').classList.toggle('hidden',!user.can_edit);
+  $$('.invoice-import-only').forEach(e=>e.classList.toggle('hidden',!user.can_edit));
+  $('#report-scope').options[1].disabled=!user.can_team_reports;
+  
+  // Encendemos el botón de SecretAdmin
+  setupSecretAdminToggle();
+  
+  $('#system-dialog').showModal();
+  if(user.must_change_password){
+      $('#password-notice').textContent=state.language==='es'?'Debes reemplazar la contraseña temporal antes de continuar.':'Replace the temporary password before continuing.';
+      $('#password-dialog').showModal();
+  }
+}
+
+// --- REEMPLAZO: Ajustamos selectSystem para que no pelee con tu botón ---
+async function selectSystem(system){
+  state.system=system;
+  $('#system-dialog').close();
+  $('#system-button').textContent=system==='special'?'Special Quotations (JPY)':'Follow Up Quotations (USD)';
+  $$('.special-only').forEach(e=>e.classList.toggle('hidden',system!=='special'));
+  $$('.standard-only').forEach(e=>e.classList.toggle('hidden',system==='special'));
+  if(!state.me?.can_edit)$$('.invoice-import-only').forEach(e=>e.classList.add('hidden'));
+
+  $$('.regular-nav').forEach(e=>e.classList.toggle('hidden',!!state.me?.management_profile));
+  $$('.manager-only').forEach(e=>e.classList.toggle('hidden',!state.me?.management_profile));
+  
+  renderLegend();
+  await Promise.all([loadAgents(),loadRanks()]);
+  await navigate(state.me?.management_profile?'management':'dashboard');
+}
 $('#login-language').addEventListener('change',()=>{state.language=$('#login-language').value;applyLanguage();if($('#login-dialog').open)showLogin(state.bootstrap);});
 $('#login-form').addEventListener('submit',async e=>{e.preventDefault();$('#login-error').textContent='';try{const endpoint=state.bootstrap?'/api/auth/bootstrap':'/api/auth/login';const result=await api(endpoint,{method:'POST',body:JSON.stringify({username:$('#login-username').value,password:$('#login-password').value,language:$('#login-language').value})});await enterApp(result.user);}catch(err){$('#login-error').textContent=err.message;}});
 $('#logout-button').addEventListener('click',async()=>{try{await api('/api/auth/logout',{method:'POST'});}catch(_){}state.me=null;state.system=null;showLogin(false);});
