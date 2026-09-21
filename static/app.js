@@ -459,7 +459,10 @@ if (btnOpenInvoices && invoiceDialog) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content_base64: base64, filename: file.name })
 });
-const res = await request.json();
+const res = await api(endpoint, {
+          method: 'POST',
+          body: JSON.stringify({ content_base64: base64, filename: file.name })
+      });
 if (!request.ok) throw new Error(res.error || 'Error en el servidor');
       currentInvoiceToken = res.token;
       invoicePreviewContainer.innerHTML = res.preview_html;
@@ -491,7 +494,10 @@ if (!request.ok) throw new Error(res.error || 'Error en el servidor');
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token: currentInvoiceToken })
 });
-const res = await request.json();
+const res = await api(endpoint, {
+          method: 'POST',
+          body: JSON.stringify({ token: currentInvoiceToken })
+      });
 if (!request.ok) throw new Error(res.error || 'Error en el servidor');
       
       alert(res.message);
