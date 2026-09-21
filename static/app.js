@@ -425,27 +425,35 @@ function openUser(id) {
     $('#edit-active').checked = !!u.active;
     $('#edit-password').value = '';
 
-    // --- NUEVO: Inyectar el selector de roles solo para SecretAdmin ---
-    let roleSelect = $('#edit-role');
-    if (!roleSelect) {
-        const wrapper = document.createElement('label');
-        wrapper.id = 'edit-role-wrapper';
-        wrapper.innerHTML = `<span>${state.language==='es'?'Rol del sistema':'System Role'}</span>
-                             <select id="edit-role">
-                                 <option value="0">Developer (Vista Completa)</option>
-                                 <option value="1">Manager (Vista Limitada)</option>
-                             </select>`;
-        // Lo insertamos justo antes del campo de contraseña o después de 'activo'
-        $('#edit-active').closest('label').after(wrapper);
-        roleSelect = $('#edit-role');
+    // --- MÉTODO INFALIBLE: Pegar el HTML directamente ---
+    if (!document.getElementById('edit-role-wrapper')) {
+        const htmlSelector = `
+        <div id="edit-role-wrapper" style="margin: 15px 0; padding: 10px; background: #f4f6f8; border: 1px solid #cbd5e1; border-radius: 6px;">
+            <span style="font-weight: bold; display: block; margin-bottom: 5px; color: #0f172a;">
+                ⚙️ Rol del sistema
+            </span>
+            <select id="edit-role" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
+                <option value="0">Developer (Vista Completa)</option>
+                <option value="1">Manager (Vista Limitada)</option>
+            </select>
+        </div>`;
+        
+        // Lo insertamos justo antes de la caja de contraseña para que no rompa tu diseño
+        const cajaPassword = document.getElementById('edit-password');
+        if (cajaPassword) {
+            cajaPassword.insertAdjacentHTML('beforebegin', htmlSelector);
+        }
     }
     
-    // Asignar el valor actual (1 para Manager, 0 para Developer)
-    roleSelect.value = u.management_profile ? "1" : "0";
+    // Asignar si es Manager (1) o Developer (0)
+    document.getElementById('edit-role').value = u.management_profile ? "1" : "0";
     
-    // Ocultar el selector si el usuario actual NO es SecretAdmin
-    $('#edit-role-wrapper').style.display = (state.me.username === 'SecretAdmin') ? 'block' : 'none';
-    // ------------------------------------------------------------------
+    // Imprimimos tu rol en la consola para confirmar que el sistema sabe quién eres
+    console.log("Tu rol actual es:", state.me?.role);
+    
+    // Hacemos visible la caja SOLO si eres secretadmin
+    const esSecretAdmin = state.me?.role === 'secretadmin';
+    document.getElementById('edit-role-wrapper').style.display = esSecretAdmin ? 'block' : 'none';
 
     if (!$('#user-edit-dialog').open) $('#user-edit-dialog').showModal();
 }
@@ -462,7 +470,7 @@ $('#user-edit-form').addEventListener('submit', async e => {
         };
         
         // Si es el SecretAdmin guardando, adjuntamos la decisión del rol
-        if (state.me.username === 'SecretAdmin') {
+        if (state.me.role === 'secretadmin') {
             payload.management_profile = $('#edit-role').value === "1";
         }
 
