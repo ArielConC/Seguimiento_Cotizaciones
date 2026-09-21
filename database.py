@@ -599,7 +599,8 @@ def list_quotes(filters: dict[str, str]) -> list[dict[str, Any]]:
     }
     order = orders.get(filters.get("order", "priority"), orders["priority"])
     with connect() as db:
-        rows = db.execute(f"SELECT q.* FROM quotes q WHERE {' AND '.join(clauses)} ORDER BY {order}", values).fetchall()
+        # ---> LÍNEA MODIFICADA <---
+        rows = db.execute(f"SELECT q.*, EXISTS(SELECT 1 FROM po_invoices WHERE quote_id=q.id) AS has_invoices FROM quotes q WHERE {' AND '.join(clauses)} ORDER BY {order}", values).fetchall()
     return [decorate_quote(row) for row in rows_to_dicts(rows)]
 
 
@@ -612,10 +613,10 @@ def list_managed_quotes(filters: dict[str, str] | None = None) -> list[dict[str,
               "folio_desc":"CAST(q.folio_number AS INTEGER) DESC","folio_asc":"CAST(q.folio_number AS INTEGER) ASC"}
     order = orders.get(filters.get("order", "status_activity"), orders["status_activity"])
     with connect() as db:
-        rows = db.execute(
-            f"SELECT q.* FROM quotes q WHERE {' AND '.join(clauses)} ORDER BY {order}", values).fetchall()
-    result = [decorate_quote(row) for row in rows_to_dicts(rows)]
-    return [row for row in result if not filters.get("overdue") == "1" or row["overdue"]]
+        # ---> LÍNEA MODIFICADA <---
+        rows = db.execute(f"SELECT q.*, EXISTS(SELECT 1 FROM po_invoices WHERE quote_id=q.id) AS has_invoices FROM quotes q WHERE {' AND '.join(clauses)} ORDER BY {order}", values).fetchall()
+    return [decorate_quote(row) for row in rows_to_dicts(rows)]
+
 
 
 def list_management_quotes(filters: dict[str, str] | None = None) -> list[dict[str, Any]]:
@@ -636,7 +637,8 @@ def list_management_quotes(filters: dict[str, str] | None = None) -> list[dict[s
     }
     order = orders.get(filters.get("order", "newest_activity"), orders["newest_activity"])
     with connect() as db:
-        rows = db.execute(f"SELECT q.* FROM quotes q WHERE {' AND '.join(clauses)} ORDER BY {order}", values).fetchall()
+        # ---> ESTA ES LA LÍNEA QUE CAMBIA <---
+        rows = db.execute(f"SELECT q.*, EXISTS(SELECT 1 FROM po_invoices WHERE quote_id=q.id) AS has_invoices FROM quotes q WHERE {' AND '.join(clauses)} ORDER BY {order}", values).fetchall()
     return [decorate_quote(row) for row in rows_to_dicts(rows)]
 
 
