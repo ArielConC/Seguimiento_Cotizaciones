@@ -175,8 +175,9 @@ class Handler(BaseHTTPRequestHandler):
             else: self.send_error(HTTPStatus.NOT_FOUND)
         except Exception as exc: self._handle_error(exc)
 
-    def do_POST(self)->None:  # noqa: N802
+    def do_POST(self):
         parsed=urlparse(self.path)
+        print(f"--- RECIBIENDO POST EN: {parsed.path} ---", flush=True) # <-- AGREGA ESTA LÍNEA
         try:
             if parsed.path=="/api/auth/bootstrap":
                 payload=self._read_json(); user,token=auth.bootstrap(str(payload.get("username","")),str(payload.get("password","")),str(payload.get("language","en")),self._client_ip(),self.headers.get("User-Agent","")); self._auth_response(user,token); return
