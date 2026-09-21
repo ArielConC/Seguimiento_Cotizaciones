@@ -604,20 +604,18 @@ def list_quotes(filters: dict[str, str]) -> list[dict[str, Any]]:
     return [decorate_quote(row) for row in rows_to_dicts(rows)]
 
 
-def list_management_quotes(filters: dict[str, str] | None = None) -> list[dict[str, Any]]:
+def list_managed_quotes(filters: dict[str, str] | None = None) -> list[dict[str, Any]]:
     filters = dict(filters or {})
-    filters.pop("historical", None)
-    filters.pop("archive", None)
     
-    # --- NUEVO: Atrapamos el filtro de 'No gestionadas' ---
+    # Atrapamos el filtro de 'No gestionadas'
     unmanaged = False
     if filters.get("status") == "unmanaged":
         unmanaged = True
-        filters["status"] = "pending"  # Forzamos a que busque solo entre las pendientes
+        filters["status"] = "pending"
         
     clauses, values = _quote_where(filters)
     
-    # Si el usuario pidió 'No gestionadas', le exigimos a la base de datos que la fecha de revisión esté vacía
+    # Exigimos a la base de datos que la fecha de revisión esté vacía si piden "No gestionadas"
     if unmanaged:
         clauses.append("q.last_reviewed_at IS NULL")
         
@@ -625,53 +623,17 @@ def list_management_quotes(filters: dict[str, str] | None = None) -> list[dict[s
         "priority": "CASE q.priority WHEN 'S' THEN 1 WHEN 'A' THEN 2 WHEN 'B' THEN 3 ELSE 4 END,q.total_usd DESC",
         "date_desc": "q.quote_date DESC,CAST(q.folio_number AS INTEGER) DESC",
         "date_asc": "q.quote_date ASC,CAST(q.folio_number AS INTEGER) ASC",
-        "folio_desc": "CAST(q.folio_number AS INTEGER) DESC,q.quote_date DESC",
-        "folio_asc": "CAST(q.folio_number AS INTEGER) ASC,q.quote_date ASC",
-        "amount_desc": "q.total_usd DESC,q.quote_date DESC",
-        "amount_asc": "q.total_usd ASC,q.quote_date ASC",
+        "status_activity": "datetime(COALESCE(q.last_reviewed_at,q.discovered_at)) DESC",
         "newest_activity": "datetime(COALESCE(q.last_reviewed_at,q.discovered_at)) DESC",
         "oldest_activity": "datetime(COALESCE(q.last_reviewed_at,q.discovered_at)) ASC",
     }
-    order = orders.get(filters.get("order", "newest_activity"), orders["newest_activity"])
-    with connect() as db:
-        rows = db.execute(f"SELECT q.*, EXISTS(SELECT 1 FROM po_invoices WHERE quote_id=q.id) AS has_invoices FROM quotes q WHERE {' AND '.join(clauses)} ORDER BY {order}", values).fetchall()
-    return [decorate_quote(row) for row in rows_to_dicts(rows)]
-
-
-
-def list_management_quotes(filters: dict[str, str] | None = None) -> list[dict[str, Any]]:
-    filters = dict(filters or {})
-    filters.pop("historical", None)
-    filters.pop("archive", None)
+    order = orders.get(filters.get("order", "status_activity"), orders["status_activity"])
     
-    # --- NUEVO: Atrapamos el filtro de 'No gestionadas' ---
-    unmanaged = False
-    if filters.get("status") == "unmanaged":
-        unmanaged = True
-        filters["status"] = "pending"  # Forzamos a que busque solo entre las pendientes
-        
-    clauses, values = _quote_where(filters)
-    
-    # Si el usuario pidió 'No gestionadas', le exigimos a la base de datos que la fecha de revisión esté vacía
-    if unmanaged:
-        clauses.append("q.last_reviewed_at IS NULL")
-        
-    orders = {
-        "priority": "CASE q.priority WHEN 'S' THEN 1 WHEN 'A' THEN 2 WHEN 'B' THEN 3 ELSE 4 END,q.total_usd DESC",
-        "date_desc": "q.quote_date DESC,CAST(q.folio_number AS INTEGER) DESC",
-        "date_asc": "q.quote_date ASC,CAST(q.folio_number AS INTEGER) ASC",
-        "folio_desc": "CAST(q.folio_number AS INTEGER) DESC,q.quote_date DESC",
-        "folio_asc": "CAST(q.folio_number AS INTEGER) ASC,q.quote_date ASC",
-        "amount_desc": "q.total_usd DESC,q.quote_date DESC",
-        "amount_asc": "q.total_usd ASC,q.quote_date ASC",
-        "newest_activity": "datetime(COALESCE(q.last_reviewed_at,q.discovered_at)) DESC",
-        "oldest_activity": "datetime(COALESCE(q.last_reviewed_at,q.discovered_at)) ASC",
-    }
-    order = orders.get(filters.get("order", "newest_activity"), orders["newest_activity"])
     with connect() as db:
+        # Incluimos la validación de po_invoices para encender el gafete de Excel
         rows = db.execute(f"SELECT q.*, EXISTS(SELECT 1 FROM po_invoices WHERE quote_id=q.id) AS has_invoices FROM quotes q WHERE {' AND '.join(clauses)} ORDER BY {order}", values).fetchall()
+        
     return [decorate_quote(row) for row in rows_to_dicts(rows)]
-
 
 def get_quote(quote_id: int) -> dict[str, Any]:
     with connect() as db:
