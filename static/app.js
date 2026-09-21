@@ -272,6 +272,16 @@ function configureListControls(){
   const managed=state.view==='managed';
   const management=state.view==='management';
   $('#status-filter-wrap').classList.toggle('hidden',!(managed||management));
+  
+  // --- NUEVO: Inyectar opción "No gestionadas" al menú desplegable de Estatus ---
+  const statusSelect = $('#status-filter');
+  if (statusSelect && !statusSelect.querySelector('option[value="unmanaged"]')) {
+      const opt = document.createElement('option');
+      opt.value = 'unmanaged';
+      opt.textContent = state.language === 'es' ? 'No gestionadas' : 'Unmanaged';
+      statusSelect.appendChild(opt); 
+  }
+  
   $('#priority-filter-wrap').classList.toggle('hidden',managed);
   $('#rank-filter-wrap').classList.toggle('hidden',managed||state.system!=='special');
   $('#order-filter-wrap').classList.toggle('hidden',managed);
@@ -438,7 +448,43 @@ function normalizeQuote(raw){const q={...(raw||{})};for(const key of ['folio','q
 function detailsHtml(raw){const q=normalizeQuote(raw);const pairs=state.system==='special'?[[t('reference'),q.folio||'—'],[t('date'),fmtDate(q.quote_date)],[t('end_user'),q.receptor||'—'],[t('rank'),q.rank||'—'],["Item code",q.code||'—'],[t('model'),q.description||'—'],[t('quantity'),q.quantity??'—'],[`${t('unit_price')} (JPY)`,money(q.unit_price)],[t('nt_agent'),q.nt_agent||'—'],[t('status'),statusLabel(q.status)]]:[[t('reference'),q.folio||'—'],[t('date'),fmtDate(q.quote_date)],["Series",q.series||'—'],[t('company'),q.distributor_company||'—'],[t('end_user'),q.end_user||'—'],[t('dist_agent'),q.distributor_agent||'—'],[t('nt_agent'),q.nt_agent||'—'],[`${t('quoted_total')} (USD)`,money(q.total_usd)],[t('net_total'),q.net_total_usd==null?'—':money(q.net_total_usd)],[t('order'),q.customer_order||'—'],[t('status'),statusLabel(q.status)]];if(q.status==='po')pairs.push([t('po_date'),fmtDate(q.po_date)],[t('po_total'),q.po_total_usd?money(q.po_total_usd):'—']);if(q.status==='lost')pairs.push([t('reason'),q.loss_reason||'—']);return pairs.map(([k,v])=>`<div><span>${esc(k)}</span><strong>${esc(v==null?'—':v)}</strong></div>`).join('');}
 function commentsHtml(comments){return comments?.length?comments.map(c=>`<div class="history-item"><strong>${esc(c.user_name)}</strong><time>${fmtDT(c.created_at)}</time><p>${esc(c.body)}</p></div>`).join(''):`<p class="muted">${t('no_comments')}</p>`;}
 function invoicesHtml(invoices){return `<table class="invoice-table"><thead><tr><th>${t('invoice_date')}</th><th>${t('invoice_series')}</th><th>${t('invoice_number')}</th><th>${t('invoice_amount')}</th></tr></thead><tbody>${invoices.map(row=>`<tr><td>${fmtDate(row.invoice_date)}</td><td>${esc(row.invoice_series)}</td><td class="folio">${esc(row.invoice_number)}</td><td class="money">${money(row.amount)}</td></tr>`).join('')}</tbody></table>`;}
-async function openView(id){try{const q=normalizeQuote(await api(`${prefix()}/quotes/${id}`));state.quote=q;$('#view-title').textContent=q.folio;$('#view-details').innerHTML=detailsHtml(q);const showInvoices=q.status==='po'&&q.invoices.length;$('#view-invoices-section').classList.toggle('hidden',!showInvoices);$('#view-invoices').innerHTML=showInvoices?invoicesHtml(q.invoices):'';$('#view-comments').innerHTML=commentsHtml(q.comments);$('#view-events').innerHTML=q.events?.length?q.events.slice().reverse().map(e=>`<div class="history-item"><strong>${esc(eventLabel(e.event_type))}</strong><time>${esc(e.user_name||'System')} · ${fmtDT(e.created_at)}</time><p>${esc(e.note||'')}</p></div>`).join(''):`<p class="muted">${t('no_activity')}</p>`;$('#view-dialog').showModal();}catch(e){toast(e.message,true);}}
+async function openView(id){
+  try{
+    const q=normalizeQuote(await api(`${prefix()}/quotes/${id}`));
+    state.quote=q;
+    $('#view-title').textContent=q.folio;
+    $('#view-details').innerHTML=detailsHtml(q);
+    
+    // --- NUEVO: Inyectar botón de Gestionar dentro del panel de Vista ---
+    let btn = document.getElementById('btn-view-to-manage');
+    if (!btn) {
+        btn = document.createElement('button');
+        btn.id = 'btn-view-to-manage';
+        btn.className = 'button primary';
+        btn.style.width = '100%';
+        btn.style.marginTop = '15px';
+        btn.style.marginBottom = '15px';
+        btn.style.padding = '10px';
+        btn.style.fontWeight = 'bold';
+        // Lo insertamos justo debajo del resumen de detalles
+        $('#view-details').parentNode.insertBefore(btn, $('#view-details').nextSibling);
+    }
+    btn.textContent = state.language === 'es' ? '⚙️ Gestionar esta cotización' : '⚙️ Manage this quotation';
+    btn.style.display = (!q.is_historical && !q.is_archived && state.me.can_edit) ? 'block' : 'none';
+    btn.onclick = () => { 
+        $('#view-dialog').close(); 
+        openManage(id); 
+    };
+    // -------------------------------------------------------------------
+
+    const showInvoices=q.status==='po'&&q.invoices.length;
+    $('#view-invoices-section').classList.toggle('hidden',!showInvoices);
+    $('#view-invoices').innerHTML=showInvoices?invoicesHtml(q.invoices):'';
+    $('#view-comments').innerHTML=commentsHtml(q.comments);
+    $('#view-events').innerHTML=q.events?.length?q.events.slice().reverse().map(e=>`<div class="history-item"><strong>${esc(eventLabel(e.event_type))}</strong><time>${esc(e.user_name||'System')} · ${fmtDT(e.created_at)}</time><p>${esc(e.note||'')}</p></div>`).join(''):`<p class="muted">${t('no_activity')}</p>`;
+    $('#view-dialog').showModal();
+  }catch(e){toast(e.message,true);}
+}
 function invoiceRow(row={}){return `<div class="invoice-row"><label><span>${t('invoice_date')}</span><input class="invoice-date" type="date" value="${esc(row.invoice_date||'')}" required></label><label><span>${t('invoice_series')}</span><input class="invoice-series" value="${esc(row.invoice_series||'')}" placeholder="IV" maxlength="40" required></label><label><span>${t('invoice_number')}</span><input class="invoice-number" value="${esc(row.invoice_number||'')}" placeholder="8,772" maxlength="100" required></label><label><span>${t('invoice_amount')} (${currency()})</span><input class="invoice-amount" type="number" min="0.01" step="0.01" value="${row.amount??''}" required></label><button class="remove-invoice" type="button" title="${t('remove')}">×</button></div>`;}
 function renderInvoiceRows(rows=[]){$('#invoice-rows').innerHTML=rows.map(invoiceRow).join('');updateInvoiceTotal();} function invoicePayload(){return $$('.invoice-row').map(row=>({invoice_date:row.querySelector('.invoice-date').value,invoice_series:row.querySelector('.invoice-series').value.trim(),invoice_number:row.querySelector('.invoice-number').value.trim(),amount:Number(row.querySelector('.invoice-amount').value||0)}));} function updateInvoiceTotal(){const total=$$('.invoice-amount').reduce((sum,input)=>sum+Number(input.value||0),0);$('#invoice-total-value').textContent=money(total);}
 $('#invoice-rows').addEventListener('input',updateInvoiceTotal);$('#invoice-rows').addEventListener('click',event=>{const button=event.target.closest('.remove-invoice');if(button){button.closest('.invoice-row')?.remove();updateInvoiceTotal();}});
