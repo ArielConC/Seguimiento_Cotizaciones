@@ -21,7 +21,7 @@ import auth
 import backup
 import database
 import imports_manager
-import invoice_manager #<-------- NUEVA LÍNEA
+import invoice_manager
 import special
 from reports import build_report_pdf, build_report_xlsx
 
@@ -177,7 +177,6 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed=urlparse(self.path)
-        print(f"--- RECIBIENDO POST EN: {parsed.path} ---", flush=True) # <-- AGREGA ESTA LÍNEA
         try:
             if parsed.path=="/api/auth/bootstrap":
                 payload=self._read_json(); user,token=auth.bootstrap(str(payload.get("username","")),str(payload.get("password","")),str(payload.get("language","en")),self._client_ip(),self.headers.get("User-Agent","")); self._auth_response(user,token); return
@@ -194,7 +193,6 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path in {"/api/import/confirm","/api/special/import/confirm"}:
                 workspace="special" if "/special/" in parsed.path else "standard"; payload=self._read_json(); self._json(imports_manager.confirm(workspace,str(payload.get("token","")),user),HTTPStatus.CREATED)
             
-            # --- RUTAS PARA FACTURAS (VISTA PREVIA Y CONFIRMAR) ---
             elif parsed.path in {"/api/import/invoices/preview", "/api/special/import/invoices/preview"}:
                 workspace = "special" if "/special/" in parsed.path else "standard"
                 payload = self._read_json(35_000_000)
@@ -206,8 +204,6 @@ class Handler(BaseHTTPRequestHandler):
                 workspace = "special" if "/special/" in parsed.path else "standard"
                 payload = self._read_json()
                 self._json(invoice_manager.confirm(workspace, str(payload.get("token", "")), user), HTTPStatus.CREATED)
-            # ------------------------------------------------------
-
             elif parsed.path=="/api/users": self._json(auth.create_user(user,self._read_json()),HTTPStatus.CREATED)
             elif parsed.path=="/api/backup/run":
                 if not auth.can_admin(user): raise PermissionError("Administrator permission required")
@@ -249,7 +245,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main()->None:
-    database.initialize(); special.initialize(); auth.initialize(); backup.initialize(); backup.launch_automatic()
+    database.initialize(); special.initialize(); auth.initialize(); invoice_manager.initialize(); backup.initialize(); backup.launch_automatic()
     display_host="127.0.0.1" if HOST in {"0.0.0.0","::"} else HOST; url=f"http://{display_host}:{PORT}"
     print(f"Data directory: {database.DATA_DIR}")
     try: server=SingleInstanceHTTPServer((HOST,PORT),Handler)

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Quotation Follow-up | NT Tool</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260918.1">
+  <link rel="stylesheet" href="/static/styles.css?v=20260921.1">
 </head>
 <body>
   <div id="app" class="app-shell hidden">
@@ -36,9 +36,7 @@
           <label><span data-i18n="language">Language</span><select id="language-select"><option value="en">English</option><option value="es">Español</option><option value="ja">日本語</option></select></label>
 <button id="upload-button" class="button primary" data-i18n="upload_excel">Upload Excel</button>
 
-<!-- NUEVO BOTÓN DE FACTURAS -->
-<input type="file" id="file-invoices" accept=".xlsx, .xls" style="display: none;">
-<button id="btn-open-invoices" class="button" style="margin-left: 5px; background-color: #10b981; color: white; border: none;">Subir Factura</button>
+          <button id="btn-open-invoices" class="button invoice-import-only standard-only" style="margin-left:5px;background-color:#10b981;color:white;border:none;" data-i18n="upload_invoices">Upload invoices</button>
 <!-- ----------------------- -->
           <div class="user-menu"><strong id="user-name"></strong></div>
           <button id="password-button" class="button ghost" data-i18n="change_password">Change password</button>
@@ -138,21 +136,21 @@
   <form id="invoice-form" class="dialog-content">
     <div class="dialog-heading">
       <div>
-        <p class="eyebrow" style="color: #10b981;">IMPORTAR DATOS</p>
-        <h2>Subir Facturas de PO</h2>
+        <p class="eyebrow" style="color:#10b981;" data-i18n="import_data">IMPORT DATA</p>
+        <h2 data-i18n="upload_invoices">Upload invoices</h2>
       </div>
       <button type="button" class="icon-button dialog-close">×</button>
     </div>
-    <p class="section-help">El Excel debe contener las columnas del sistema: Fila A (Fecha), B (Serie), C (Folio), E (Total) y N (Texto Extra 2 con la orden del cliente).</p>
-    <label>Excel de Facturas<input id="invoice-file" type="file" accept=".xlsx, .xls" required></label>
+    <p class="section-help" data-i18n="invoice_import_help">Invoices are matched to confirmed PO quotations through Texto Extra 2.</p>
+    <label data-i18n="invoices">Invoices<input id="invoice-file" type="file" accept=".xlsx,.xlsm,.xls" required></label>
     <div id="invoice-preview-container" class="hidden"></div>
     <div class="dialog-actions">
-      <button type="button" class="button ghost dialog-close">Cancelar</button>
-      <button id="preview-invoice-btn" class="button primary" type="submit" style="background-color: #10b981; border-color: #10b981;">Vista previa</button>
-      <button id="confirm-invoice-btn" class="button primary hidden" type="button" style="background-color: #10b981; border-color: #10b981;">Confirmar importación</button>
+      <button type="button" class="button ghost dialog-close" data-i18n="cancel">Cancel</button>
+      <button id="preview-invoice-btn" class="button primary" type="submit" style="background-color:#10b981;border-color:#10b981;" data-i18n="preview">Preview</button>
+      <button id="confirm-invoice-btn" class="button primary hidden" type="button" style="background-color:#10b981;border-color:#10b981;" data-i18n="confirm_import">Confirm import</button>
     </div>
   </form>
 </dialog>
-  <script src="/static/app.js?v=20260918.1" defer></script>
+  <script src="/static/app.js?v=20260921.1" defer></script>
 </body>
 </html>

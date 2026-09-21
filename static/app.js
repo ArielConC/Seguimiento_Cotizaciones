@@ -3,8 +3,8 @@ const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const esc=(v='')=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 
 const I18N={
-  en:{sales_followup:'Sales follow-up',dashboard:'Dashboard',priorities:'SABC Priorities',managed:'Managed',safe:'Safe',po_missing:'PO Date Missing',lost:'Lost',archive:'Archive',historical:'Historical',reports:'Reports',users:'Users',quotation_management:'QUOTATION MANAGEMENT',agent:'NT Tool agent',language:'Language',upload_excel:'Upload Excel',logout:'Log out',change_password:'Change password',current_password:'Current password',new_password:'New password',pending_total:'Pending quotation total',in_followup:'IN FOLLOW-UP',priority_distribution:'Priority distribution',daily_report:'DAILY REPORT',today_activity:"Today's activity",generate_daily:'Generate daily report',attention:'ATTENTION',priority_quotes:'Priority quotations',view_all:'View all',search:'Search',priority:'Priority',sort_by:'Sort by',period_activity:'Quotation activity by period',report_help:'The report counts newly imported quotations, saved Manage reviews, status changes, losses, and PO conversions for the selected period.',daily:'Daily',weekly:'Weekly',monthly:'Monthly',custom:'Custom range',start_date:'Start date',end_date:'End date',scope:'Scope',generate_report:'Generate report',user_admin:'USER ADMINISTRATION',create_user:'Create user',display_name:'Display name',role:'Role',temporary_password:'Temporary password',generate_password:'Generate temporary password',temporary_password_help:'Copy the password before saving. The user will be asked to replace it at the next login.',recent_audit:'Recent audit activity',select_workspace:'SELECT WORKSPACE',choose_system:'Choose a follow-up system',standard_help:'USD quotations imported from the daily Excel report.',special_help:'Special items in JPY with percentile-based priorities.',import_data:'IMPORT DATA',cancel:'Cancel',preview:'Preview',confirm_import:'Confirm import',update_followup:'UPDATE FOLLOW-UP',status:'Status',followup_method:'Follow-up method',loss_reason:'Loss reason',po_date:'PO date',mark_safe:'Mark as Safe',new_comment:'New comment',comment_history:'Comment history',save_review:'Save review',operation_details:'OPERATION DETAILS',audit_history:'Activity history',edit_user:'Edit user',active:'Active',reset_password:'Reset password',save:'Save',all_agents:'All agents',pending:'Pending',view:'View',manage:'Manage',restore:'Restore',added_today:'Added today',po_today:'PO today',overdue:'Overdue follow-ups',po_date_missing:'PO date missing',quotations:'quotations',quoted_total:'Quoted total',po_total:'PO total',grand_total:'Pending + PO total',backup_ok:'Backup verified',backup_due:'Backup overdue or missing',no_records:'No quotations match this view.',read_only:'Read-only historical data',import_complete:'Import completed',all_team:'All team',my_activity:'My activity',new:'New',updated:'Updated',unchanged:'Unchanged',duplicates:'Duplicates',invalid:'Invalid',excluded:'Archived / hidden',rows:'Rows',details:'Details',end_user:'End User',company:'Distributor',net_total:'Net internal total',order:'Customer order',method:'Method',last_review:'Last review',days:'days',rank:'Rank',model:'Model',quantity:'Quantity',unit_price:'Unit price',reason:'Loss reason',date:'Date',reference:'Quotation',nt_agent:'NT Tool agent',dist_agent:'Distributor agent',no_comments:'No comments have been saved.',no_activity:'No activity has been recorded.',reviewed:'Reviewed',status_changes:'Status changes',converted_po:'Converted to PO',lost_quotes:'Lost quotations',financial_summary:'Financial summary',loss_breakdown:'Loss reasons',po_comparison:'QT versus PO',signin:'Sign in',initial_setup:'Initial setup: choose takujiyamada or ignacioillescas and create the first password.',password:'Password',username:'Username',po_invoices:'PO invoices',po_invoices_help:'Add every invoice that forms this PO. The total and PO date are calculated automatically.',add_invoice:'+ Add invoice',invoice_date:'Invoice date',invoice_series:'Series / folio',invoice_number:'Invoice number / code',invoice_amount:'Invoice amount',remove:'Remove',invoices:'Invoices',hide_navigation:'Hide navigation',show_navigation:'Show navigation',management:'Management',period:'Period',all_history:'All history',today:'Today',current_month:'Current month',fiscal_year:'Fiscal year',all:'All',distributor_code:'Distributor code',quote_age:'Days open',last_activity:'Last activity',initial_import:'Initial import',stale_question:'This quotation is more than 90 days old. Was it lost?',color_legend:'Row colors',no_code:'No code'},
-  es:{sales_followup:'Seguimiento de ventas',dashboard:'Resumen',priorities:'Prioridades SABC',managed:'Gestionadas',safe:'Seguras',po_missing:'PO sin fecha',lost:'Perdidas',archive:'Archivo',historical:'Históricas',reports:'Reportes',users:'Usuarios',quotation_management:'GESTIÓN DE COTIZACIONES',agent:'Agente NT Tool',language:'Idioma',upload_excel:'Subir Excel',logout:'Cerrar sesión',change_password:'Cambiar contraseña',current_password:'Contraseña actual',new_password:'Nueva contraseña',pending_total:'Total de cotizaciones pendientes',in_followup:'EN SEGUIMIENTO',priority_distribution:'Distribución por prioridad',daily_report:'REPORTE DIARIO',today_activity:'Actividad de hoy',generate_daily:'Generar reporte diario',attention:'ATENCIÓN',priority_quotes:'Cotizaciones prioritarias',view_all:'Ver todas',search:'Buscar',priority:'Prioridad',sort_by:'Ordenar por',period_activity:'Actividad de cotizaciones por periodo',report_help:'El reporte cuenta cotizaciones nuevas importadas, revisiones guardadas en Manage, cambios de estado, pérdidas y conversiones a PO del periodo seleccionado.',daily:'Diario',weekly:'Semanal',monthly:'Mensual',custom:'Rango personalizado',start_date:'Fecha inicial',end_date:'Fecha final',scope:'Alcance',generate_report:'Generar reporte',user_admin:'ADMINISTRACIÓN DE USUARIOS',create_user:'Crear usuario',display_name:'Nombre visible',role:'Rol',temporary_password:'Contraseña temporal',generate_password:'Generar contraseña temporal',temporary_password_help:'Copia la contraseña antes de guardar. El usuario deberá reemplazarla al iniciar sesión.',recent_audit:'Actividad reciente de auditoría',select_workspace:'SELECCIONAR ESPACIO',choose_system:'Elige un sistema de seguimiento',standard_help:'Cotizaciones en USD importadas desde el Excel diario.',special_help:'Artículos especiales en JPY con prioridades por percentiles.',import_data:'IMPORTAR DATOS',cancel:'Cancelar',preview:'Vista previa',confirm_import:'Confirmar importación',update_followup:'ACTUALIZAR SEGUIMIENTO',status:'Estado',followup_method:'Método de seguimiento',loss_reason:'Motivo de pérdida',po_date:'Fecha de PO',mark_safe:'Marcar como segura',new_comment:'Nuevo comentario',comment_history:'Historial de comentarios',save_review:'Guardar revisión',operation_details:'DETALLES DE LA OPERACIÓN',audit_history:'Historial de actividad',edit_user:'Editar usuario',active:'Activo',reset_password:'Restablecer contraseña',save:'Guardar',all_agents:'Todos los agentes',pending:'Pendiente',view:'Ver',manage:'Gestionar',restore:'Restaurar',added_today:'Agregadas hoy',po_today:'PO de hoy',overdue:'Seguimientos vencidos',po_date_missing:'PO sin fecha',quotations:'cotizaciones',quoted_total:'Total cotizado',po_total:'Total de PO',grand_total:'Total pendiente + PO',backup_ok:'Respaldo verificado',backup_due:'Respaldo vencido o inexistente',no_records:'No hay cotizaciones en esta vista.',read_only:'Datos históricos de solo lectura',import_complete:'Importación completada',all_team:'Todo el equipo',my_activity:'Mi actividad',new:'Nuevas',updated:'Actualizadas',unchanged:'Sin cambios',duplicates:'Duplicadas',invalid:'Inválidas',excluded:'Archivadas / ocultas',rows:'Filas',details:'Detalles',end_user:'Usuario final',company:'Distribuidor',net_total:'Total neto interno',order:'Orden del cliente',method:'Método',last_review:'Última revisión',days:'días',rank:'Rango',model:'Modelo',quantity:'Cantidad',unit_price:'Precio unitario',reason:'Motivo de pérdida',date:'Fecha',reference:'Cotización',nt_agent:'Agente NT Tool',dist_agent:'Agente distribuidor',no_comments:'No se han guardado comentarios.',no_activity:'No se ha registrado actividad.',reviewed:'Revisadas',status_changes:'Cambios de estado',converted_po:'Convertidas a PO',lost_quotes:'Cotizaciones perdidas',financial_summary:'Resumen financiero',loss_breakdown:'Motivos de pérdida',po_comparison:'Comparación QT contra PO',signin:'Entrar',initial_setup:'Configuración inicial: selecciona takujiyamada o ignacioillescas y crea la primera contraseña.',password:'Contraseña',username:'Usuario',po_invoices:'Facturas de la PO',po_invoices_help:'Agrega todas las facturas que componen esta PO. El total y la fecha de PO se calculan automáticamente.',add_invoice:'+ Agregar factura',invoice_date:'Fecha de factura',invoice_series:'Serie / folio',invoice_number:'Número / código de factura',invoice_amount:'Importe de factura',remove:'Eliminar',invoices:'Facturas',hide_navigation:'Ocultar navegación',show_navigation:'Mostrar navegación',management:'Gerencia',period:'Periodo',all_history:'Todo el historial',today:'Hoy',current_month:'Mes actual',fiscal_year:'Año fiscal',all:'Todos',distributor_code:'Código distribuidor',quote_age:'Días abierta',last_activity:'Última actividad',initial_import:'Alta inicial',stale_question:'Esta cotización tiene más de 90 días. ¿Se perdió?',color_legend:'Colores de seguimiento',no_code:'Sin código'},
+  en:{sales_followup:'Sales follow-up',dashboard:'Dashboard',priorities:'SABC Priorities',managed:'Managed',safe:'Safe',po_missing:'PO Date Missing',lost:'Lost',archive:'Archive',historical:'Historical',reports:'Reports',users:'Users',quotation_management:'QUOTATION MANAGEMENT',agent:'NT Tool agent',language:'Language',upload_excel:'Upload Excel',logout:'Log out',change_password:'Change password',current_password:'Current password',new_password:'New password',pending_total:'Pending quotation total',in_followup:'IN FOLLOW-UP',priority_distribution:'Priority distribution',daily_report:'DAILY REPORT',today_activity:"Today's activity",generate_daily:'Generate daily report',attention:'ATTENTION',priority_quotes:'Priority quotations',view_all:'View all',search:'Search',priority:'Priority',sort_by:'Sort by',period_activity:'Quotation activity by period',report_help:'The report counts newly imported quotations, saved Manage reviews, status changes, losses, and PO conversions for the selected period.',daily:'Daily',weekly:'Weekly',monthly:'Monthly',custom:'Custom range',start_date:'Start date',end_date:'End date',scope:'Scope',generate_report:'Generate report',user_admin:'USER ADMINISTRATION',create_user:'Create user',display_name:'Display name',role:'Role',temporary_password:'Temporary password',generate_password:'Generate temporary password',temporary_password_help:'Copy the password before saving. The user will be asked to replace it at the next login.',recent_audit:'Recent audit activity',select_workspace:'SELECT WORKSPACE',choose_system:'Choose a follow-up system',standard_help:'USD quotations imported from the daily Excel report.',special_help:'Special items in JPY with percentile-based priorities.',import_data:'IMPORT DATA',cancel:'Cancel',preview:'Preview',confirm_import:'Confirm import',update_followup:'UPDATE FOLLOW-UP',status:'Status',followup_method:'Follow-up method',loss_reason:'Loss reason',po_date:'PO date',mark_safe:'Mark as Safe',new_comment:'New comment',comment_history:'Comment history',save_review:'Save review',operation_details:'OPERATION DETAILS',audit_history:'Activity history',edit_user:'Edit user',active:'Active',reset_password:'Reset password',save:'Save',all_agents:'All agents',pending:'Pending',view:'View',manage:'Manage',restore:'Restore',added_today:'Added today',po_today:'PO today',overdue:'Overdue follow-ups',po_date_missing:'PO date missing',quotations:'quotations',quoted_total:'Quoted total',po_total:'PO total',grand_total:'Pending + PO total',backup_ok:'Backup verified',backup_due:'Backup overdue or missing',no_records:'No quotations match this view.',read_only:'Read-only historical data',import_complete:'Import completed',all_team:'All team',my_activity:'My activity',new:'New',updated:'Updated',unchanged:'Unchanged',duplicates:'Duplicates',invalid:'Invalid',excluded:'Archived / hidden',rows:'Rows',details:'Details',end_user:'End User',company:'Distributor',net_total:'Net internal total',order:'Customer order',method:'Method',last_review:'Last review',days:'days',rank:'Rank',model:'Model',quantity:'Quantity',unit_price:'Unit price',reason:'Loss reason',date:'Date',reference:'Quotation',nt_agent:'NT Tool agent',dist_agent:'Distributor agent',no_comments:'No comments have been saved.',no_activity:'No activity has been recorded.',reviewed:'Reviewed',status_changes:'Status changes',converted_po:'Converted to PO',lost_quotes:'Lost quotations',financial_summary:'Financial summary',loss_breakdown:'Loss reasons',po_comparison:'QT versus PO',signin:'Sign in',initial_setup:'Initial setup: choose takujiyamada or ignacioillescas and create the first password.',password:'Password',username:'Username',po_invoices:'PO invoices',po_invoices_help:'Add every invoice that forms this PO. The total and PO date are calculated automatically.',add_invoice:'+ Add invoice',invoice_date:'Invoice date',invoice_series:'Series / folio',invoice_number:'Invoice number / code',invoice_amount:'Invoice amount',remove:'Remove',invoices:'Invoices',hide_navigation:'Hide navigation',show_navigation:'Show navigation',management:'Management',period:'Period',all_history:'All history',today:'Today',current_month:'Current month',fiscal_year:'Fiscal year',all:'All',distributor_code:'Distributor code',quote_age:'Days open',last_activity:'Last activity',initial_import:'Initial import',stale_question:'This quotation is more than 90 days old. Was it lost?',color_legend:'Row colors',no_code:'No code',upload_invoices:'Upload invoices',invoice_import_help:'Invoices are matched to confirmed PO quotations through Texto Extra 2.'},
+  es:{sales_followup:'Seguimiento de ventas',dashboard:'Resumen',priorities:'Prioridades SABC',managed:'Gestionadas',safe:'Seguras',po_missing:'PO sin fecha',lost:'Perdidas',archive:'Archivo',historical:'Históricas',reports:'Reportes',users:'Usuarios',quotation_management:'GESTIÓN DE COTIZACIONES',agent:'Agente NT Tool',language:'Idioma',upload_excel:'Subir Excel',logout:'Cerrar sesión',change_password:'Cambiar contraseña',current_password:'Contraseña actual',new_password:'Nueva contraseña',pending_total:'Total de cotizaciones pendientes',in_followup:'EN SEGUIMIENTO',priority_distribution:'Distribución por prioridad',daily_report:'REPORTE DIARIO',today_activity:'Actividad de hoy',generate_daily:'Generar reporte diario',attention:'ATENCIÓN',priority_quotes:'Cotizaciones prioritarias',view_all:'Ver todas',search:'Buscar',priority:'Prioridad',sort_by:'Ordenar por',period_activity:'Actividad de cotizaciones por periodo',report_help:'El reporte cuenta cotizaciones nuevas importadas, revisiones guardadas en Manage, cambios de estado, pérdidas y conversiones a PO del periodo seleccionado.',daily:'Diario',weekly:'Semanal',monthly:'Mensual',custom:'Rango personalizado',start_date:'Fecha inicial',end_date:'Fecha final',scope:'Alcance',generate_report:'Generar reporte',user_admin:'ADMINISTRACIÓN DE USUARIOS',create_user:'Crear usuario',display_name:'Nombre visible',role:'Rol',temporary_password:'Contraseña temporal',generate_password:'Generar contraseña temporal',temporary_password_help:'Copia la contraseña antes de guardar. El usuario deberá reemplazarla al iniciar sesión.',recent_audit:'Actividad reciente de auditoría',select_workspace:'SELECCIONAR ESPACIO',choose_system:'Elige un sistema de seguimiento',standard_help:'Cotizaciones en USD importadas desde el Excel diario.',special_help:'Artículos especiales en JPY con prioridades por percentiles.',import_data:'IMPORTAR DATOS',cancel:'Cancelar',preview:'Vista previa',confirm_import:'Confirmar importación',update_followup:'ACTUALIZAR SEGUIMIENTO',status:'Estado',followup_method:'Método de seguimiento',loss_reason:'Motivo de pérdida',po_date:'Fecha de PO',mark_safe:'Marcar como segura',new_comment:'Nuevo comentario',comment_history:'Historial de comentarios',save_review:'Guardar revisión',operation_details:'DETALLES DE LA OPERACIÓN',audit_history:'Historial de actividad',edit_user:'Editar usuario',active:'Activo',reset_password:'Restablecer contraseña',save:'Guardar',all_agents:'Todos los agentes',pending:'Pendiente',view:'Ver',manage:'Gestionar',restore:'Restaurar',added_today:'Agregadas hoy',po_today:'PO de hoy',overdue:'Seguimientos vencidos',po_date_missing:'PO sin fecha',quotations:'cotizaciones',quoted_total:'Total cotizado',po_total:'Total de PO',grand_total:'Total pendiente + PO',backup_ok:'Respaldo verificado',backup_due:'Respaldo vencido o inexistente',no_records:'No hay cotizaciones en esta vista.',read_only:'Datos históricos de solo lectura',import_complete:'Importación completada',all_team:'Todo el equipo',my_activity:'Mi actividad',new:'Nuevas',updated:'Actualizadas',unchanged:'Sin cambios',duplicates:'Duplicadas',invalid:'Inválidas',excluded:'Archivadas / ocultas',rows:'Filas',details:'Detalles',end_user:'Usuario final',company:'Distribuidor',net_total:'Total neto interno',order:'Orden del cliente',method:'Método',last_review:'Última revisión',days:'días',rank:'Rango',model:'Modelo',quantity:'Cantidad',unit_price:'Precio unitario',reason:'Motivo de pérdida',date:'Fecha',reference:'Cotización',nt_agent:'Agente NT Tool',dist_agent:'Agente distribuidor',no_comments:'No se han guardado comentarios.',no_activity:'No se ha registrado actividad.',reviewed:'Revisadas',status_changes:'Cambios de estado',converted_po:'Convertidas a PO',lost_quotes:'Cotizaciones perdidas',financial_summary:'Resumen financiero',loss_breakdown:'Motivos de pérdida',po_comparison:'Comparación QT contra PO',signin:'Entrar',initial_setup:'Configuración inicial: selecciona takujiyamada o ignacioillescas y crea la primera contraseña.',password:'Contraseña',username:'Usuario',po_invoices:'Facturas de la PO',po_invoices_help:'Agrega todas las facturas que componen esta PO. El total y la fecha de PO se calculan automáticamente.',add_invoice:'+ Agregar factura',invoice_date:'Fecha de factura',invoice_series:'Serie / folio',invoice_number:'Número / código de factura',invoice_amount:'Importe de factura',remove:'Eliminar',invoices:'Facturas',hide_navigation:'Ocultar navegación',show_navigation:'Mostrar navegación',management:'Gerencia',period:'Periodo',all_history:'Todo el historial',today:'Hoy',current_month:'Mes actual',fiscal_year:'Año fiscal',all:'Todos',distributor_code:'Código distribuidor',quote_age:'Días abierta',last_activity:'Última actividad',initial_import:'Alta inicial',stale_question:'Esta cotización tiene más de 90 días. ¿Se perdió?',color_legend:'Colores de seguimiento',no_code:'Sin código',upload_invoices:'Subir facturas',invoice_import_help:'Las facturas se relacionan con cotizaciones PO confirmadas mediante Texto Extra 2.'},
   ja: {sales_followup:'営業フォローアップ',dashboard:'ダッシュボード',priorities:'優先度 SABC',managed:'対応済み',safe:'安全 (Safe)',po_missing:'PO 日付なし',lost:'失注 (Lost)',archive:'アーカイブ',historical:'履歴データ',reports:'レポート',users:'ユーザー',quotation_management:'見積管理',agent:'NT担当者',language:'言語',upload_excel:'Excelアップロード',logout:'ログアウト',change_password:'パスワード変更',current_password:'現在のパスワード',new_password:'新しいパスワード',pending_total:'保留中の見積合計',in_followup:'フォローアップ中',priority_distribution:'優先度分布',daily_report:'日報',today_activity:'今日の活動',generate_daily:'日報を作成',attention:'要注意',priority_quotes:'優先見積',view_all:'すべて表示',search:'検索',priority:'優先度',sort_by:'並べ替え',period_activity:'期間別の見積活動',report_help:'選択した期間の新規見積、保存されたレビュー、ステータス変更、失注、PO変換をカウントします。',daily:'日次',weekly:'週次',monthly:'月次',custom:'カスタム範囲',start_date:'開始日',end_date:'終了日',scope:'範囲',generate_report:'レポート作成',user_admin:'ユーザー管理',create_user:'ユーザー作成',display_name:'表示名',role:'役割',temporary_password:'一時パスワード',generate_password:'一時パスワード生成',temporary_password_help:'保存する前にパスワードをコピーしてください。',recent_audit:'最近の監査活動',select_workspace:'ワークスペース選択',choose_system:'システムを選択',standard_help:'日次ExcelからインポートされたUSD見積。',special_help:'パーセンタイルベースの優先度を持つJPYの特別アイテム。',import_data:'データインポート',cancel:'キャンセル',preview:'プレビュー',confirm_import:'インポート確認',update_followup:'フォローアップ更新',status:'ステータス',followup_method:'フォローアップ方法',loss_reason:'失注理由',po_date:'PO日付',mark_safe:'安全(Safe)にマーク',new_comment:'新規コメント',comment_history:'コメント履歴',save_review:'レビューを保存',operation_details:'操作詳細',audit_history:'活動履歴',edit_user:'ユーザー編集',active:'有効',reset_password:'パスワードリセット',save:'保存',all_agents:'すべての担当者',pending:'保留中',view:'表示',manage:'管理',restore:'復元',added_today:'本日追加',po_today:'本日のPO',overdue:'期限切れのフォローアップ',po_date_missing:'PO日付なし',quotations:'件',quoted_total:'見積合計',po_total:'PO合計',grand_total:'保留中 + PO合計',backup_ok:'バックアップ確認済み',backup_due:'バックアップ期限切れ',no_records:'データがありません。',read_only:'読み取り専用の履歴データ',import_complete:'インポート完了',all_team:'全チーム',my_activity:'自分の活動',new:'新規',updated:'更新済み',unchanged:'変更なし',duplicates:'重複',invalid:'無効',excluded:'除外 / 非表示',rows:'行',details:'詳細',end_user:'エンドユーザー',company:'代理店',net_total:'社内純合計',order:'顧客注文',method:'方法',last_review:'最終レビュー',days:'日',rank:'ランク',model:'モデル',quantity:'数量',unit_price:'単価',reason:'失注理由',date:'日付',reference:'見積番号',nt_agent:'NT担当者',dist_agent:'代理店担当者',no_comments:'コメントはありません。',no_activity:'活動記録はありません。',reviewed:'レビュー済み',status_changes:'ステータス変更',converted_po:'PO変換',lost_quotes:'失注見積',financial_summary:'財務概要',loss_breakdown:'失注理由の内訳',po_comparison:'見積 vs PO',signin:'サインイン',initial_setup:'初期設定',password:'パスワード',username:'ユーザー名',po_invoices:'POの請求書',po_invoices_help:'このPOの請求書を追加します。合計と日付は自動計算されます。',add_invoice:'+ 請求書追加',invoice_date:'請求日',invoice_series:'シリーズ / フォリオ',invoice_number:'請求書番号 / コード',invoice_amount:'請求額',remove:'削除',invoices:'請求書',hide_navigation:'ナビゲーション非表示',show_navigation:'ナビゲーション表示',management:'管理 (Management)',period:'期間',all_history:'全履歴',today:'今日',current_month:'今月',fiscal_year:'会計年度',all:'すべて',distributor_code:'代理店コード',quote_age:'経過日数',last_activity:'最終活動',initial_import:'初回インポート',stale_question:'この見積は90日以上経過しています。失注しましたか？',color_legend:'行の色の凡例',no_code:'コードなし'}
 };
 const t=k=>I18N[state.language]?.[k]||I18N.en[k]||k;
@@ -81,7 +81,7 @@ function eventLabel(s){return ({created:state.language==='es'?'Creada':'Created'
 function renderLegend(){if(!state.system)return;$('#priority-legend').innerHTML=state.system==='special'?`<p>${t('priority')}</p><div><b class="priority s">S</b><small>Top 10%</small></div><div><b class="priority a">A</b><small>11–30%</small></div><div><b class="priority b">B</b><small>31–60%</small></div><div><b class="priority c">C</b><small>61–100%</small></div>`:`<p>${t('priority')}</p><div><b class="priority s">S</b><small>USD 5,001+</small></div><div><b class="priority a">A</b><small>USD 1,001–5,000</small></div><div><b class="priority b">B</b><small>USD 501–1,000</small></div><div><b class="priority c">C</b><small>USD 0–500</small></div>`;}
 
 function showLogin(bootstrap){state.bootstrap=bootstrap;$('#app').classList.add('hidden');$('#login-subtitle').textContent=bootstrap?t('initial_setup'):t('signin');$('#login-submit').textContent=bootstrap?(state.language==='es'?'Crear Superadmin':'Create Superadmin'):t('signin');$('#bootstrap-note').classList.toggle('hidden',!bootstrap);$('#bootstrap-note').textContent=bootstrap?t('initial_setup'):'';$('#login-dialog').showModal();}
-async function enterApp(user){state.me=user;state.language=$('#login-language').value||user.language||'en';applyLanguage();$('#user-name').textContent=user.display_name;$('#app').classList.remove('hidden');$('#login-dialog').close();$$('.admin-only').forEach(e=>e.classList.toggle('hidden',!user.can_admin_users));$$('.audit-only').forEach(e=>e.classList.toggle('hidden',!user.can_view_audit));$$('.regular-nav').forEach(e=>e.classList.toggle('hidden',!!user.management_profile));$$('.manager-only').forEach(e=>e.classList.toggle('hidden',!user.management_profile));$('#upload-button').classList.toggle('hidden',!user.can_edit);$('#report-scope').options[1].disabled=!user.can_team_reports;$('#system-dialog').showModal();if(user.must_change_password){$('#password-notice').textContent=state.language==='es'?'Debes reemplazar la contraseña temporal antes de continuar.':'Replace the temporary password before continuing.';$('#password-dialog').showModal();}}
+async function enterApp(user){state.me=user;state.language=$('#login-language').value||user.language||'en';applyLanguage();$('#user-name').textContent=user.display_name;$('#app').classList.remove('hidden');$('#login-dialog').close();$$('.admin-only').forEach(e=>e.classList.toggle('hidden',!user.can_admin_users));$$('.audit-only').forEach(e=>e.classList.toggle('hidden',!user.can_view_audit));$$('.regular-nav').forEach(e=>e.classList.toggle('hidden',!!user.management_profile));$$('.manager-only').forEach(e=>e.classList.toggle('hidden',!user.management_profile));$('#upload-button').classList.toggle('hidden',!user.can_edit);$$('.invoice-import-only').forEach(e=>e.classList.toggle('hidden',!user.can_edit));$('#report-scope').options[1].disabled=!user.can_team_reports;$('#system-dialog').showModal();if(user.must_change_password){$('#password-notice').textContent=state.language==='es'?'Debes reemplazar la contraseña temporal antes de continuar.':'Replace the temporary password before continuing.';$('#password-dialog').showModal();}}
 $('#login-language').addEventListener('change',()=>{state.language=$('#login-language').value;applyLanguage();if($('#login-dialog').open)showLogin(state.bootstrap);});
 $('#login-form').addEventListener('submit',async e=>{e.preventDefault();$('#login-error').textContent='';try{const endpoint=state.bootstrap?'/api/auth/bootstrap':'/api/auth/login';const result=await api(endpoint,{method:'POST',body:JSON.stringify({username:$('#login-username').value,password:$('#login-password').value,language:$('#login-language').value})});await enterApp(result.user);}catch(err){$('#login-error').textContent=err.message;}});
 $('#logout-button').addEventListener('click',async()=>{try{await api('/api/auth/logout',{method:'POST'});}catch(_){}state.me=null;state.system=null;showLogin(false);});
@@ -93,6 +93,7 @@ async function selectSystem(system){
   $('#system-button').textContent=system==='special'?'Special Quotations (JPY)':'Follow Up Quotations (USD)';
   $$('.special-only').forEach(e=>e.classList.toggle('hidden',system!=='special'));
   $$('.standard-only').forEach(e=>e.classList.toggle('hidden',system==='special'));
+  if(!state.me?.can_edit)$$('.invoice-import-only').forEach(e=>e.classList.add('hidden'));
 
   //LINEA NUEVA: Ocultar vistas no permitidas para el perfil directivo
   if(state.me?.management_profile)$$('.regular-nav').forEach(e=>e.classList.add('hidden'));
@@ -413,107 +414,96 @@ $('#password-form').addEventListener('submit',async e=>{e.preventDefault();try{a
 (async function init(){try{const status=await api('/api/auth/status');const me=await api('/api/me').catch(()=>null);if(me){state.me=me;state.language=me.language||'en';$('#login-language').value=state.language;await enterApp(me);}else showLogin(status.bootstrap_required);}catch(e){showLogin(false);$('#login-error').textContent=e.message;}})();
 
 
-// --- NUEVO: Facturas con Vista Previa (Panel Verde) ---
-const btnOpenInvoices = document.getElementById('btn-open-invoices');
-const invoiceDialog = document.getElementById('invoice-dialog');
-const invoiceForm = document.getElementById('invoice-form');
-const invoiceFile = document.getElementById('invoice-file');
-const invoicePreviewContainer = document.getElementById('invoice-preview-container');
-const previewInvoiceBtn = document.getElementById('preview-invoice-btn');
-const confirmInvoiceBtn = document.getElementById('confirm-invoice-btn');
-let currentInvoiceToken = null;
+// Invoice Excel import for confirmed USD purchase orders.
+const btnOpenInvoices=$('#btn-open-invoices');
+const invoiceDialog=$('#invoice-dialog');
+const invoiceForm=$('#invoice-form');
+const invoiceFile=$('#invoice-file');
+const invoicePreviewContainer=$('#invoice-preview-container');
+const previewInvoiceBtn=$('#preview-invoice-btn');
+const confirmInvoiceBtn=$('#confirm-invoice-btn');
+let currentInvoiceToken=null;
 
-if (btnOpenInvoices && invoiceDialog) {
-  // Abrir panel
-  btnOpenInvoices.addEventListener('click', () => {
-    invoiceForm.reset();
-    invoicePreviewContainer.innerHTML = '';
-    invoicePreviewContainer.classList.add('hidden');
-    confirmInvoiceBtn.classList.add('hidden');
-    previewInvoiceBtn.classList.remove('hidden');
-    invoiceFile.disabled = false;
-    invoiceDialog.showModal();
-  });
-
-  // Paso 1: Vista Previa
-  invoiceForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const file = invoiceFile.files[0];
-    if (!file) return;
-
-    const originalText = previewInvoiceBtn.innerText;
-    previewInvoiceBtn.innerText = 'Cargando...';
-    previewInvoiceBtn.disabled = true;
-
-    try {
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result.split(',')[1]);
-        reader.onerror = reject;
-      });
-
-      const endpoint = state.system === 'special' ? '/api/special/import/invoices/preview' : '/api/import/invoices/preview';
-      const request = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content_base64: base64, filename: file.name })
-});
-const res = await api(endpoint, {
-          method: 'POST',
-          body: JSON.stringify({ content_base64: base64, filename: file.name })
-      });
-if (!request.ok) throw new Error(res.error || 'Error en el servidor');
-      currentInvoiceToken = res.token;
-      invoicePreviewContainer.innerHTML = res.preview_html;
-      invoicePreviewContainer.classList.remove('hidden');
-      
-      previewInvoiceBtn.classList.add('hidden');
-      confirmInvoiceBtn.classList.remove('hidden');
-      invoiceFile.disabled = true;
-
-    } catch (err) {
-      alert('Error al leer Excel: ' + err.message);
-    } finally {
-      previewInvoiceBtn.innerText = originalText;
-      previewInvoiceBtn.disabled = false;
-    }
-  });
-
-  // Paso 2: Confirmar
-  confirmInvoiceBtn.addEventListener('click', async () => {
-    if (!currentInvoiceToken) return;
-    const originalText = confirmInvoiceBtn.innerText;
-    confirmInvoiceBtn.innerText = 'Guardando...';
-    confirmInvoiceBtn.disabled = true;
-
-    try {
-      const endpoint = state.system === 'special' ? '/api/special/import/invoices/confirm' : '/api/import/invoices/confirm';
-      const request = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token: currentInvoiceToken })
-});
-const res = await api(endpoint, {
-          method: 'POST',
-          body: JSON.stringify({ token: currentInvoiceToken })
-      });
-if (!request.ok) throw new Error(res.error || 'Error en el servidor');
-      
-      alert(res.message);
-      invoiceDialog.close();
-      await loadData(); // Recargar tablas y números
-    } catch (err) {
-      alert('Error al confirmar: ' + err.message);
-    } finally {
-      confirmInvoiceBtn.innerText = originalText;
-      confirmInvoiceBtn.disabled = false;
-    }
-  });
-  
-  // Botones de cerrar
-  invoiceDialog.querySelectorAll('.dialog-close').forEach(btn => {
-    btn.addEventListener('click', () => invoiceDialog.close());
-  });
+function invoiceImportStatus(status){
+  const labels={
+    new:state.language==='es'?'Nueva':'New',
+    duplicate:state.language==='es'?'Duplicada':'Duplicate',
+    unmatched:state.language==='es'?'Sin cotización':'No matching quotation',
+    not_po:state.language==='es'?'La cotización no está en PO':'Quotation is not PO',
+    ambiguous:state.language==='es'?'PO ambigua':'Ambiguous PO',
+    conflict:state.language==='es'?'Factura en conflicto':'Conflicting invoice',
+  };
+  return labels[status]||status;
 }
-// ------------------------------------------------------
+function renderInvoiceImportPreview(result){
+  const metrics=[
+    [result.new,state.language==='es'?'Nuevas':'New'],
+    [result.duplicate,state.language==='es'?'Duplicadas':'Duplicates'],
+    [result.unmatched,state.language==='es'?'Sin coincidencia':'Unmatched'],
+    [result.not_po,state.language==='es'?'No confirmadas':'Not confirmed'],
+    [result.ambiguous,state.language==='es'?'Ambiguas':'Ambiguous'],
+    [result.invalid,state.language==='es'?'Inválidas':'Invalid'],
+  ];
+  const rows=(result.rows||[]).map(row=>`<tr><td>${row.source_row}</td><td>${fmtDate(row.invoice_date)}</td><td class="folio">${esc(row.invoice_series)}-${esc(row.invoice_number)}</td><td>${esc(row.customer_order)}</td><td>${esc(row.quote_folio)||'—'}</td><td class="money">${money(row.amount)}</td><td><span class="history-badge">${esc(invoiceImportStatus(row.status))}</span></td></tr>`).join('');
+  const errors=(result.errors||[]).map(item=>`<li>${state.language==='es'?'Fila':'Row'} ${item.row}: ${esc(item.error)}</li>`).join('');
+  invoicePreviewContainer.innerHTML=`<div class="preview-metrics">${metrics.map(([value,label])=>`<div><b>${Number(value||0)}</b><span>${label}</span></div>`).join('')}</div><div class="table-wrap invoice-import-preview"><table><thead><tr><th>#</th><th>${t('date')}</th><th>${t('invoices')}</th><th>${t('order')}</th><th>${t('reference')}</th><th>${t('invoice_amount')} (USD)</th><th>${t('status')}</th></tr></thead><tbody>${rows||`<tr><td colspan="7">${t('no_records')}</td></tr>`}</tbody></table></div>${errors?`<ul class="form-error invoice-import-errors">${errors}</ul>`:''}`;
+}
+
+btnOpenInvoices?.addEventListener('click',()=>{
+  if(state.system!=='standard')return toast(state.language==='es'?'La importación de facturas está disponible en Follow Up Quotations.':'Invoice import is available in Follow Up Quotations.',true);
+  currentInvoiceToken=null;
+  invoiceForm.reset();
+  invoicePreviewContainer.innerHTML='';
+  invoicePreviewContainer.classList.add('hidden');
+  confirmInvoiceBtn.classList.add('hidden');
+  previewInvoiceBtn.classList.remove('hidden');
+  invoiceFile.disabled=false;
+  invoiceDialog.showModal();
+});
+
+invoiceForm?.addEventListener('submit',async event=>{
+  event.preventDefault();
+  const file=invoiceFile.files[0];
+  if(!file)return;
+  const originalText=previewInvoiceBtn.textContent;
+  previewInvoiceBtn.textContent=state.language==='es'?'Leyendo...':'Reading...';
+  previewInvoiceBtn.disabled=true;
+  try{
+    const result=await api('/api/import/invoices/preview',{
+      method:'POST',
+      body:JSON.stringify({content_base64:toBase64(await file.arrayBuffer()),filename:file.name}),
+    });
+    currentInvoiceToken=result.token;
+    renderInvoiceImportPreview(result);
+    invoicePreviewContainer.classList.remove('hidden');
+    previewInvoiceBtn.classList.add('hidden');
+    confirmInvoiceBtn.classList.toggle('hidden',Number(result.new||0)===0);
+    invoiceFile.disabled=true;
+  }catch(error){
+    toast(error.message,true);
+  }finally{
+    previewInvoiceBtn.textContent=originalText;
+    previewInvoiceBtn.disabled=false;
+  }
+});
+
+confirmInvoiceBtn?.addEventListener('click',async()=>{
+  if(!currentInvoiceToken)return;
+  const originalText=confirmInvoiceBtn.textContent;
+  confirmInvoiceBtn.textContent=state.language==='es'?'Guardando...':'Saving...';
+  confirmInvoiceBtn.disabled=true;
+  try{
+    const result=await api('/api/import/invoices/confirm',{
+      method:'POST',
+      body:JSON.stringify({token:currentInvoiceToken}),
+    });
+    invoiceDialog.close();
+    toast(state.language==='es'?`${result.invoices_added} facturas agregadas a ${result.quotes_updated} cotizaciones PO.`:result.message);
+    await navigate(state.view);
+  }catch(error){
+    toast(error.message,true);
+  }finally{
+    confirmInvoiceBtn.textContent=originalText;
+    confirmInvoiceBtn.disabled=false;
+  }
+});

@@ -3,7 +3,12 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+import base64
+import http.client
+import json
+import threading
 from datetime import date, timedelta
+from http.server import ThreadingHTTPServer
 from io import BytesIO
 from pathlib import Path
 
@@ -15,8 +20,10 @@ PROJECT_DIR=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(PROJECT_DIR))
 
 import auth
+import app
 import backup
 import database
+import invoice_manager
 import imports_manager
 import special
 from reports import build_report_pdf, build_report_xlsx
@@ -50,11 +57,22 @@ def special_book(model_x_price: float = 2000) -> bytes:
     buffer=BytesIO(); book.save(buffer); return buffer.getvalue()
 
 
+def invoice_book(order: str = "OP-100", include_unmatched: bool = True) -> bytes:
+    book=Workbook(); sheet=book.active; sheet.title="Facturas"
+    sheet.append(["Reporte de facturas"]); sheet.append([])
+    sheet.append(["Fecha","Serie","Folio","Cliente","Total","Texto Extra 2"])
+    sheet.append([date(2026,9,10),"IV",8772,"CLIENT",150.25,order])
+    sheet.append([date(2026,9,12),"IV",8762,"CLIENT",200,order])
+    if include_unmatched:
+        sheet.append([date(2026,9,13),"IV",9999,"CLIENT",75,"UNKNOWN-PO"])
+    buffer=BytesIO(); book.save(buffer); return buffer.getvalue()
+
+
 class V2WorkflowTests(unittest.TestCase):
     def setUp(self)->None:
         self.temp=tempfile.TemporaryDirectory(); self.old=(database.DATA_DIR,database.DB_PATH,database.IMPORT_DIR,backup.BACKUP_DIR)
         database.DATA_DIR=Path(self.temp.name); database.DB_PATH=database.DATA_DIR/"test.db"; database.IMPORT_DIR=database.DATA_DIR/"imports"; backup.BACKUP_DIR=database.DATA_DIR/"backups"
-        database.initialize(); special.initialize(); auth.initialize(); backup.initialize()
+        database.initialize(); special.initialize(); auth.initialize(); invoice_manager.initialize(); backup.initialize()
         self.user,self.token=auth.bootstrap("takujiyamada","TestPassword123!","en")
 
     def tearDown(self)->None:
@@ -162,6 +180,63 @@ class V2WorkflowTests(unittest.TestCase):
         self.assertEqual(len(database.get_quote(standard_quote["id"])["invoices"]),1)
         self.assertEqual(len(special.get_quote(special_quote["id"])["invoices"]),1)
 
+    def test_invoice_excel_replaces_legacy_invoice_and_is_idempotent(self)->None:
+        quotation=imports_manager.preview("standard",standard_book(),"daily.xlsx",self.user)
+        imports_manager.confirm("standard",quotation["token"],self.user)
+        quote=next(row for row in database.list_quotes({}) if row["folio"]=="QT-100")
+        legacy_date=date(2026,8,1).isoformat()
+        with database.connect() as db:
+            db.execute("UPDATE quotes SET status='po',follow_up_type='email',po_total_usd=9999,po_date=? WHERE id=?",(legacy_date,quote["id"]))
+        database.initialize()
+        self.assertEqual(database.get_quote(quote["id"])["invoices"][0]["is_legacy"],1)
+
+        preview=invoice_manager.preview("standard",invoice_book(),"invoices.xlsx",self.user)
+        self.assertEqual((preview["new"],preview["unmatched"],preview["invalid"]),(2,1,0))
+        result=invoice_manager.confirm("standard",preview["token"],self.user)
+        self.assertEqual((result["invoices_added"],result["quotes_updated"],result["legacy_invoices_replaced"]),(2,1,1))
+        detail=database.get_quote(quote["id"])
+        self.assertEqual([row["invoice_number"] for row in detail["invoices"]],["8772","8762"])
+        self.assertTrue(all(not row["is_legacy"] for row in detail["invoices"]))
+        self.assertAlmostEqual(detail["po_total_usd"],350.25)
+        self.assertEqual(detail["po_date"],"2026-09-12")
+        self.assertIn("USD 350.25",detail["comments"][-1]["body"])
+        self.assertEqual(detail["events"][-1]["event_type"],"po_invoices_updated")
+
+        repeated=invoice_manager.preview("standard",invoice_book(include_unmatched=False),"invoices-again.xlsx",self.user)
+        self.assertEqual((repeated["new"],repeated["duplicate"]),(0,2))
+        repeated_result=invoice_manager.confirm("standard",repeated["token"],self.user)
+        self.assertEqual((repeated_result["invoices_added"],repeated_result["quotes_updated"]),(0,0))
+        with self.assertRaisesRegex(ValueError,"already been confirmed"):
+            invoice_manager.confirm("standard",repeated["token"],self.user)
+
+    def test_invoice_excel_rejects_non_po_and_special_workspace(self)->None:
+        quotation=imports_manager.preview("standard",standard_book(),"daily.xlsx",self.user)
+        imports_manager.confirm("standard",quotation["token"],self.user)
+        preview=invoice_manager.preview("standard",invoice_book(include_unmatched=False),"invoices.xlsx",self.user)
+        self.assertEqual((preview["new"],preview["not_po"]),(0,2))
+        with self.assertRaisesRegex(ValueError,"only in Follow Up Quotations"):
+            invoice_manager.preview("special",invoice_book(),"invoices.xlsx",self.user)
+
+    def test_invoice_import_http_route_accepts_authenticated_csrf_request(self)->None:
+        server=ThreadingHTTPServer(("127.0.0.1",0),app.Handler)
+        thread=threading.Thread(target=server.serve_forever,daemon=True); thread.start()
+        connection=http.client.HTTPConnection("127.0.0.1",server.server_port,timeout=10)
+        headers={
+            "Content-Type":"application/json",
+            "Cookie":f"{app.COOKIE_NAME}={self.token}",
+            "X-CSRF-Token":self.user["csrf_token"],
+        }
+        try:
+            body=json.dumps({"filename":"invoices.xlsx","content_base64":base64.b64encode(invoice_book()).decode("ascii")})
+            connection.request("POST","/api/import/invoices/preview",body=body,headers=headers)
+            response=connection.getresponse(); payload=json.loads(response.read())
+            self.assertEqual(response.status,201); self.assertEqual(payload["unmatched"],3)
+            connection.request("POST","/api/import/invoices/confirm",body=json.dumps({"token":payload["token"]}),headers=headers)
+            response=connection.getresponse(); confirmed=json.loads(response.read())
+            self.assertEqual(response.status,201); self.assertEqual(confirmed["invoices_added"],0)
+        finally:
+            connection.close(); server.shutdown(); server.server_close(); thread.join(timeout=5)
+
     def test_special_legacy_duplicate_is_merged_with_history(self)->None:
         content=special_book(); preview=imports_manager.preview("special",content,"special.xlsx",self.user)
         imports_manager.confirm("special",preview["token"],self.user)
@@ -209,6 +284,9 @@ class V2WorkflowTests(unittest.TestCase):
         for element_id in ("sidebar-toggle","manage-status","manage-method","manage-comment","add-invoice","invoice-rows","new-display-name","new-agent","new-password","edit-name","edit-agent","edit-password"):
             self.assertIn(f'id="{element_id}"',html)
         self.assertIn("invoicePayload()",javascript)
+        self.assertIn("/api/import/invoices/preview",javascript)
+        self.assertNotIn("await loadData()",javascript)
+        self.assertNotIn("const request = await fetch(endpoint",javascript)
         self.assertIn("sidebar-collapsed",javascript)
         self.assertIn("el.matches('label')",javascript)
         self.assertIn(":scope > input, :scope > select, :scope > textarea",javascript)
