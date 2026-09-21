@@ -435,20 +435,60 @@ function invoiceImportStatus(status){
   };
   return labels[status]||status;
 }
-function renderInvoiceImportPreview(result){
-  const metrics=[
-    [result.new,state.language==='es'?'Nuevas':'New'],
-    [result.duplicate,state.language==='es'?'Duplicadas':'Duplicates'],
-    [result.unmatched,state.language==='es'?'Sin coincidencia':'Unmatched'],
-    [result.not_po,state.language==='es'?'Fuera de PO sin fecha':'Not PO Date Missing'],
-    [result.ambiguous,state.language==='es'?'Ambiguas':'Ambiguous'],
-    [result.invalid,state.language==='es'?'Inválidas':'Invalid'],
-  ];
-  const applicable=Number(result.new||0);
-  const message=applicable
-    ?(state.language==='es'?`${applicable} facturas llenarán automáticamente las cotizaciones relacionadas de PO sin fecha.`:`${applicable} invoices will automatically complete the related PO Date Missing quotations.`)
-    :(state.language==='es'?'No se encontraron facturas aplicables a PO sin fecha.':'No invoices applicable to PO Date Missing were found.');
-  invoicePreviewContainer.innerHTML=`<div class="preview-metrics">${metrics.map(([value,label])=>`<div><b>${Number(value||0)}</b><span>${label}</span></div>`).join('')}</div><p class="section-help invoice-import-result">${esc(message)}</p>`;
+function renderInvoiceImportPreview(result) {
+  // Función para contar los datos correctamente sin importar si Python manda un número o una lista enorme
+  const getCount = (val) => Array.isArray(val) ? val.length : (val || 0);
+
+  const countNew = getCount(result.new);
+  const countDup = getCount(result.duplicate);
+  const countUnmatched = getCount(result.unmatched);
+  const countNotPo = getCount(result.not_po);
+  const countAmbiguous = getCount(result.ambiguous);
+  const countInvalid = getCount(result.invalid);
+
+  const htmlResumen = `
+  <div style="padding: 10px; width: 100%; color: #333;">
+      <h3 style="margin-top:0; text-align: center; color: #2e7d32; font-size: 18px;">
+          ${state.language==='es' ? 'Resumen de Sincronización' : 'Synchronization Summary'}
+      </h3>
+      <p style="font-size: 13px; text-align: center; color: #666; margin-bottom: 20px;">
+          ${state.language==='es' ? 
+          'Revisa los totales antes de inyectar las facturas a las PO sin fecha.' : 
+          'Review the totals before injecting invoices into PO Date Missing.'}
+      </p>
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;">
+          <tr style="border-bottom: 2px solid #ddd;">
+              <th style="text-align: left; padding: 6px 0;">${state.language==='es' ? 'Categoría' : 'Category'}</th>
+              <th style="text-align: right; padding: 6px 0;">${state.language==='es' ? 'Total' : 'Total'}</th>
+          </tr>
+          <tr style="border-bottom: 1px solid #eee;">
+              <td style="padding: 8px 0;">🟢 ${state.language==='es' ? 'Nuevas (Listas)' : 'New (Ready)'}</td>
+              <td style="text-align: right; font-weight: bold;">${countNew}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #eee;">
+              <td style="padding: 8px 0;">🟡 ${state.language==='es' ? 'Duplicadas' : 'Duplicates'}</td>
+              <td style="text-align: right; font-weight: bold;">${countDup}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #eee;">
+              <td style="padding: 8px 0;">⚪ ${state.language==='es' ? 'Sin coincidencia' : 'Unmatched'}</td>
+              <td style="text-align: right; font-weight: bold;">${countUnmatched}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #eee;">
+              <td style="padding: 8px 0;">🟠 ${state.language==='es' ? 'Fuera de PO / No confirmadas' : 'Not PO Date Missing'}</td>
+              <td style="text-align: right; font-weight: bold;">${countNotPo}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #eee;">
+              <td style="padding: 8px 0;">🟣 ${state.language==='es' ? 'Ambiguas' : 'Ambiguous'}</td>
+              <td style="text-align: right; font-weight: bold;">${countAmbiguous}</td>
+          </tr>
+          <tr>
+              <td style="padding: 8px 0;">🔴 ${state.language==='es' ? 'Inválidas' : 'Invalid'}</td>
+              <td style="text-align: right; font-weight: bold;">${countInvalid}</td>
+          </tr>
+      </table>
+  </div>`;
+
+  invoicePreviewContainer.innerHTML = htmlResumen;
 }
 
 btnOpenInvoices?.addEventListener('click',()=>{
