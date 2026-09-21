@@ -235,6 +235,8 @@ def can_admin(user: dict[str, Any]) -> bool:
 
 
 def is_management_profile(user: dict[str, Any]) -> bool:
+    if user.get("role")== "secretadmin":
+        return True
     return bool(user.get("is_manager",0))
 
 
