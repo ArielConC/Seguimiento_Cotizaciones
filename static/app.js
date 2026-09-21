@@ -414,7 +414,70 @@ function temporaryPassword(){const chars='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmno
 function putTemporaryPassword(selector){const input=$(selector);input.value=temporaryPassword();input.focus();input.select();}$('#generate-new-password').addEventListener('click',()=>putTemporaryPassword('#new-password'));
 $('#generate-edit-password').addEventListener('click',()=>putTemporaryPassword('#edit-password'));
 $('#user-form').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/users',{method:'POST',body:JSON.stringify({username:$('#new-username').value,display_name:$('#new-display-name').value,agent_name:$('#new-agent').value,password:$('#new-password').value,language:state.language})});e.target.reset();toast(t('create_user'));await renderUsers();}catch(err){toast(err.message,true);}});
-function openUser(id){const u=state.users.find(x=>Number(x.id)===Number(id));if(!u)return toast('User not found',true);$('#edit-user-id').value=id;$('#edit-username').textContent=`@${u.username}`;$('#edit-name').value=u.display_name||'';$('#edit-agent').value=u.agent_name||'';$('#edit-active').checked=!!u.active;$('#edit-password').value='';if(!$('#user-edit-dialog').open)$('#user-edit-dialog').showModal();}
+function openUser(id) {
+    const u = state.users.find(x => Number(x.id) === Number(id));
+    if (!u) return toast('User not found', true);
+    
+    $('#edit-user-id').value = id;
+    $('#edit-username').textContent = `@${u.username}`;
+    $('#edit-name').value = u.display_name || '';
+    $('#edit-agent').value = u.agent_name || '';
+    $('#edit-active').checked = !!u.active;
+    $('#edit-password').value = '';
+
+    // --- NUEVO: Inyectar el selector de roles solo para SecretAdmin ---
+    let roleSelect = $('#edit-role');
+    if (!roleSelect) {
+        const wrapper = document.createElement('label');
+        wrapper.id = 'edit-role-wrapper';
+        wrapper.innerHTML = `<span>${state.language==='es'?'Rol del sistema':'System Role'}</span>
+                             <select id="edit-role">
+                                 <option value="0">Developer (Vista Completa)</option>
+                                 <option value="1">Manager (Vista Limitada)</option>
+                             </select>`;
+        // Lo insertamos justo antes del campo de contraseña o después de 'activo'
+        $('#edit-active').closest('label').after(wrapper);
+        roleSelect = $('#edit-role');
+    }
+    
+    // Asignar el valor actual (1 para Manager, 0 para Developer)
+    roleSelect.value = u.management_profile ? "1" : "0";
+    
+    // Ocultar el selector si el usuario actual NO es SecretAdmin
+    $('#edit-role-wrapper').style.display = (state.me.username === 'SecretAdmin') ? 'block' : 'none';
+    // ------------------------------------------------------------------
+
+    if (!$('#user-edit-dialog').open) $('#user-edit-dialog').showModal();
+}
+
+$('#user-edit-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    try {
+        const password = $('#edit-password').value;
+        const payload = {
+            display_name: $('#edit-name').value,
+            agent_name: $('#edit-agent').value,
+            active: $('#edit-active').checked,
+            password: password
+        };
+        
+        // Si es el SecretAdmin guardando, adjuntamos la decisión del rol
+        if (state.me.username === 'SecretAdmin') {
+            payload.management_profile = $('#edit-role').value === "1";
+        }
+
+        await api(`/api/users/${$('#edit-user-id').value}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload)
+        });
+        
+        $('#user-edit-dialog').close();
+        toast(password ? (state.language === 'es' ? 'Contraseña temporal guardada' : 'Temporary password saved') : t('save'));
+        await renderUsers();
+    } catch (err) {
+        toast(err.message, true);
+    }
+});
 $('#user-edit-form').addEventListener('submit',async e=>{e.preventDefault();try{const password=$('#edit-password').value;await api(`/api/users/${$('#edit-user-id').value}`,{method:'PATCH',body:JSON.stringify({display_name:$('#edit-name').value,agent_name:$('#edit-agent').value,active:$('#edit-active').checked,password})});$('#user-edit-dialog').close();toast(password?(state.language==='es'?'Contraseña temporal guardada':'Temporary password saved'):t('save'));await renderUsers();}catch(err){toast(err.message,true);}});
 $('#password-button').addEventListener('click',()=>{$('#password-notice').textContent='';$('#password-form').reset();$('#password-dialog').showModal();});
 $('#password-form').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/me/password',{method:'PATCH',body:JSON.stringify({current_password:$('#current-password').value,new_password:$('#new-own-password').value})});state.me.must_change_password=0;$('#password-dialog').close();toast(t('change_password'));}catch(err){toast(err.message,true);}});  $$('.dialog-close').forEach(b=>b.addEventListener('click',()=>b.closest('dialog').close()));

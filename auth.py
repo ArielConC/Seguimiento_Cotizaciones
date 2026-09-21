@@ -77,6 +77,18 @@ def initialize() -> None:
                 VALUES(?,?,?,?,?,?)""",
                 (username, name, role, agent, now, now),
             )
+            
+        # --- NUEVO: Agregar la columna is_manager sin afectar a los usuarios actuales ---
+        try:
+            db.execute("ALTER TABLE users ADD COLUMN is_manager INTEGER NOT NULL DEFAULT 0")
+            db.execute("UPDATE users SET is_manager=1 WHERE username='takujiyamada'")
+        except Exception:
+            pass
+            db.execute(
+                """INSERT OR IGNORE INTO users(username,display_name,role,agent_name,created_at,updated_at)
+                VALUES(?,?,?,?,?,?)""",
+                (username, name, role, agent, now, now),
+            )
 
 
 def _hash_password(password: str, salt_hex: str | None = None) -> tuple[str, str]:
@@ -95,7 +107,7 @@ def _public(row: Any, csrf_token: str = "") -> dict[str, Any]:
     user["can_team_reports"] = user["role"] in TEAM_REPORT_ROLES
     user["can_edit"] = user["role"] != "readonly"
     user["can_view_audit"] = user["role"] == "secretadmin"
-    user["management_profile"] = str(user.get("username") or "").casefold() == "takujiyamada"
+    user["management_profile"] = bool(user.get("is_manager",0))
     if csrf_token:
         user["csrf_token"] = csrf_token
     return user
@@ -223,7 +235,7 @@ def can_admin(user: dict[str, Any]) -> bool:
 
 
 def is_management_profile(user: dict[str, Any]) -> bool:
-    return str(user.get("username") or "").casefold() == "takujiyamada"
+    return bool(user.get("is_manager",0))
 
 
 def can_team_reports(user: dict[str, Any]) -> bool:
@@ -280,15 +292,21 @@ def update_user(requester: dict[str, Any], user_id: int, payload: dict[str, Any]
         db.execute("BEGIN IMMEDIATE")
         current=db.execute("SELECT * FROM users WHERE id=?",(user_id,)).fetchone()
         if not current: raise KeyError("User not found")
-        # Preserve the existing internal access level. The administration workflow
-        # only edits identity, agent assignment, activation, and temporary password.
+        
         role=str(current["role"]); active=int(bool(payload.get("active",current["active"])))
         if user_id==requester["id"] and not active: raise ValueError("You cannot deactivate your own account")
         name=str(payload.get("display_name",current["display_name"])).strip()
         agent=str(payload.get("agent_name",current["agent_name"])).strip()
         language=str(payload.get("language",current["language"])); language=language if language in {"en","es"} else "en"
-        db.execute("UPDATE users SET display_name=?,role=?,agent_name=?,language=?,active=?,updated_at=? WHERE id=?",
-                   (name,role,agent,language,active,database.now_iso(),user_id))
+        
+        # --- NUEVO: Capturar y guardar el perfil si quien edita es el secretadmin ---
+        is_manager = current.get("is_manager", 0)
+        if requester.get("role") == "secretadmin" and "management_profile" in payload:
+            is_manager = int(bool(payload["management_profile"]))
+            
+        db.execute("UPDATE users SET display_name=?,role=?,agent_name=?,language=?,active=?,is_manager=?,updated_at=? WHERE id=?",
+                   (name,role,agent,language,active,is_manager,database.now_iso(),user_id))
+        
         password=str(payload.get("password", ""))
         if password:
             salt,digest=_hash_password(password)
@@ -296,7 +314,7 @@ def update_user(requester: dict[str, Any], user_id: int, payload: dict[str, Any]
                        (salt,digest,user_id))
             db.execute("DELETE FROM sessions WHERE user_id=?",(user_id,))
         row=db.execute("SELECT * FROM users WHERE id=?",(user_id,)).fetchone()
-        _audit_db(db,requester,"user_updated",entity_type="user",entity_id=str(user_id),detail=f"{name} / {role}; password_reset={bool(password)}")
+        _audit_db(db,requester,"user_updated",entity_type="user",entity_id=str(user_id),detail=f"{name} / {role}; is_manager={is_manager}")
     return _public(row)
 
 
