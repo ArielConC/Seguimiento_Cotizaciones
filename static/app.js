@@ -188,7 +188,8 @@ function listParams(){
   if(state.system==='special'&&!managed)p.set('rank',$('#rank-filter').value);
   p.set('order',managed?'status_activity':$('#quote-order').value);
   if(managed||management){if($('#status-filter').value)p.set('status',$('#status-filter').value);}
-  if(management){const {start,end}=dashboardRange();if(start&&end){p.set('start',start);p.set('end',end);}}
+  const {start,end}=dashboardRange();
+  if(start&&end){p.set('start',start);p.set('end',end);}
   const v=state.view;
   if(v==='pending'){p.set('status','pending');p.set('safe','0');}
   if(v==='safe'){p.set('status','pending');p.set('safe','1');}
