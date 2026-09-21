@@ -234,7 +234,19 @@ def initialize() -> None:
             CREATE INDEX IF NOT EXISTS idx_imports_workspace ON imports(workspace, created_at);
             CREATE INDEX IF NOT EXISTS idx_distributor_catalog_name ON distributor_catalog(normalized_name);
             """
+            
         )
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS po_invoices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                quote_id INTEGER NOT NULL,
+                invoice_date TEXT,
+                invoice_series TEXT,
+                invoice_number TEXT,
+                invoice_amount REAL,
+                FOREIGN KEY(quote_id) REFERENCES quotes(id)
+            )
+        """)
         _ensure_columns(db, "quotes", {
             "follow_up_type": "TEXT NOT NULL DEFAULT ''", "is_safe": "INTEGER NOT NULL DEFAULT 0",
             "po_total_usd": "REAL", "series": "TEXT NOT NULL DEFAULT ''",

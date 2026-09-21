@@ -77,6 +77,17 @@ def initialize() -> None:
             CREATE INDEX IF NOT EXISTS idx_special_invoices_active ON special_quote_invoices(quote_id,active);
             """
         )
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS po_invoices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                quote_id INTEGER NOT NULL,
+                invoice_date TEXT,
+                invoice_series TEXT,
+                invoice_number TEXT,
+                invoice_amount REAL,
+                FOREIGN KEY(quote_id) REFERENCES quotes(id)
+            )
+        """)
         database._ensure_columns(db, "special_quotes", {
             "source_quote_number":"TEXT NOT NULL DEFAULT ''","rank":"TEXT NOT NULL DEFAULT ''","po_date":"TEXT",
             "is_archived":"INTEGER NOT NULL DEFAULT 0","archive_reason":"TEXT NOT NULL DEFAULT ''","import_id":"INTEGER",
