@@ -311,7 +311,36 @@ function managementSummary(data){
   const by=Object.fromEntries(data.priorities.map(x=>[x.priority,x]));
   const cards='SABC'.split('').map(p=>{const x=by[p]||{count:0,value:0};return `<div class="priority-card"><span class="priority ${p.toLowerCase()}">${p}</span><strong>${money(x.value)}</strong><small>${x.count} ${t('quotations')}</small></div>`}).join('');
   const c=data.counts;
-  return `<h3>${t('priority_distribution')}</h3><div class="priority-summary">${cards}</div><div class="pipeline-summary"><div><span>${t('pending_total')}</span><strong>${money(c.pending_value)}</strong></div><div><span>${t('po_total')}</span><strong>${money(c.po_value)}</strong></div><div class="grand"><span>${t('grand_total')}</span><strong>${money(Number(c.pending_value||0)+Number(c.po_value||0))}</strong></div></div>${trackingLegend()}`;
+  
+  // --- NUEVO: Tarjetas de Efectividad de Contacto ---
+  const resp = data.responses || { yes: 0, no: 0, pending: 0 };
+  const responseCards = `
+    <div style="display: flex; gap: 10px; margin-top: 15px; margin-bottom: 20px;">
+        <div style="flex:1; background:#e6f4ea; padding:10px; border-radius:8px; text-align:center; border:1px solid #ceead6;">
+            <span style="font-size:20px; font-weight:bold; color:#137333; display:block;">${resp.yes}</span>
+            <small style="color:#137333;">${state.language==='es'?'✅ Con Respuesta':'✅ Responded'}</small>
+        </div>
+        <div style="flex:1; background:#fce8e6; padding:10px; border-radius:8px; text-align:center; border:1px solid #f9d2ce;">
+            <span style="font-size:20px; font-weight:bold; color:#c5221f; display:block;">${resp.no}</span>
+            <small style="color:#c5221f;">${state.language==='es'?'❌ Sin Respuesta':'❌ No Response'}</small>
+        </div>
+        <div style="flex:1; background:#fef7e0; padding:10px; border-radius:8px; text-align:center; border:1px solid #fde293;">
+            <span style="font-size:20px; font-weight:bold; color:#b06000; display:block;">${resp.pending}</span>
+            <small style="color:#b06000;">${state.language==='es'?'⏳ En Espera':'⏳ Pending'}</small>
+        </div>
+    </div>
+  `;
+
+  return `<h3>${t('priority_distribution')}</h3>
+          <div class="priority-summary">${cards}</div>
+          <h3>${state.language==='es'?'Efectividad de Contacto':'Contact Effectiveness'}</h3>
+          ${responseCards}
+          <div class="pipeline-summary">
+              <div><span>${t('pending_total')}</span><strong>${money(c.pending_value)}</strong></div>
+              <div><span>${t('po_total')}</span><strong>${money(c.po_value)}</strong></div>
+              <div class="grand"><span>${t('grand_total')}</span><strong>${money(Number(c.pending_value||0)+Number(c.po_value||0))}</strong></div>
+          </div>
+          ${trackingLegend()}`;
 }
 async function renderList(){
   configureListControls();
@@ -495,31 +524,53 @@ async function openManage(id) {
     state.quote = q;
     if (q.read_only) return toast(t('read_only'), true);
 
-    // --- INICIO DE LÓGICA STALE QUOTE ---
     let statusToSet = ['pending', 'po', 'lost'].includes(q.status) ? q.status : 'pending';
     let lossReasonToSet = q.loss_reason;
 
-    // Si está pendiente y tiene más de 90 días, lanzar la pregunta
     if (statusToSet === 'pending' && Number(q.quote_age_days || 0) > 90) {
       const isLost = confirm(state.language === 'es'
         ? 'Esta cotización tiene más de 90 días abierta. ¿Se perdió la operación?'
         : 'This quotation is more than 90 days old. Was it lost?');
-      
       if (isLost) {
         statusToSet = 'lost';
         lossReasonToSet = 'Stale Quote';
       }
     }
-    // --- FIN DE LÓGICA ---
 
     $('#manage-title').textContent = q.folio || '—';
     $('#manage-summary').innerHTML = detailsHtml(q);
     
-    // Asignamos los valores preseleccionados
     $('#manage-status').value = statusToSet;
     $('#manage-method').value = q.follow_up_type;
+
+    // --- NUEVO: Inyectar Selector de Respuesta ---
+    let responseSelect = $('#manage-client-response');
+    if (!responseSelect) {
+        const wrapper = document.createElement('div');
+        wrapper.id = 'manage-response-wrapper';
+        wrapper.style.marginTop = '10px';
+        wrapper.innerHTML = `
+            <label style="display: block;">
+                <span style="font-weight: bold; display: block; margin-bottom: 5px; font-size: 13px; color: #333;">
+                    ${state.language === 'es' ? '¿Hubo respuesta del cliente/proveedor?' : 'Did the client respond?'}
+                </span>
+                <select id="manage-client-response" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 5px;">
+                    <option value="pending">${state.language === 'es' ? '⏳ Esperando respuesta' : '⏳ Awaiting response'}</option>
+                    <option value="yes">${state.language === 'es' ? '✅ Sí, respondió' : '✅ Yes, responded'}</option>
+                    <option value="no">${state.language === 'es' ? '❌ No hubo respuesta' : '❌ No response'}</option>
+                </select>
+            </label>
+        `;
+        const methodInput = $('#manage-method');
+        const targetContainer = methodInput.closest('label') || methodInput;
+        targetContainer.parentNode.insertBefore(wrapper, targetContainer.nextSibling);
+        responseSelect = $('#manage-client-response');
+    }
+    // Si la cotización ya tenía una respuesta guardada, la cargamos
+    responseSelect.value = q.client_response || 'pending';
+    // --------------------------------------------
+
     $('#manage-loss').value = lossReasonToSet;
-    
     $('#manage-safe').checked = !!q.is_safe;
     $('#manage-comment').value = '';
     $('#manage-comments').innerHTML = commentsHtml(q.comments);
@@ -532,7 +583,31 @@ async function openManage(id) {
   }
 }
 function toggleManage(){const s=$('#manage-status').value;$('#manage-dialog').classList.toggle('po-mode',s==='po');$('#loss-wrap').classList.toggle('hidden',s!=='lost');$('#po-fields').classList.toggle('hidden',s!=='po');$('#safe-wrap').classList.toggle('hidden',s!=='pending');$('#manage-comment-wrap').classList.toggle('hidden',s==='po');$('#manage-loss').required=s==='lost';if(s==='po'&&!$$('.invoice-row').length)renderInvoiceRows([{}]);$$('.invoice-row input').forEach(input=>input.required=s==='po');}$('#manage-status').addEventListener('change',toggleManage);
-$('#manage-form').addEventListener('submit',async e=>{e.preventDefault();try{const status=$('#manage-status').value;await api(`${prefix()}/quotes/${state.quote.id}`,{method:'PATCH',body:JSON.stringify({status,follow_up_type:$('#manage-method').value,is_safe:$('#manage-safe').checked,loss_reason:$('#manage-loss').value,comment:status==='po'?'':$('#manage-comment').value,invoices:status==='po'?invoicePayload():[]})});$('#manage-dialog').close();toast(state.language==='es'?'Seguimiento guardado':'Follow-up saved');await navigate(state.view);}catch(err){toast(err.message,true);}});
+$('#manage-form').addEventListener('submit',async e=>{
+  e.preventDefault();
+  try{
+    const status=$('#manage-status').value;
+    const responseSelect = $('#manage-client-response');
+    
+    await api(`${prefix()}/quotes/${state.quote.id}`,{
+      method:'PATCH',
+      body:JSON.stringify({
+        status,
+        follow_up_type:$('#manage-method').value,
+        client_response: responseSelect ? responseSelect.value : 'pending',
+        is_safe:$('#manage-safe').checked,
+        loss_reason:$('#manage-loss').value,
+        comment:status==='po'?'':$('#manage-comment').value,
+        invoices:status==='po'?invoicePayload():[]
+      })
+    });
+    $('#manage-dialog').close();
+    toast(state.language==='es'?'Seguimiento guardado':'Follow-up saved');
+    await navigate(state.view);
+  }catch(err){
+    toast(err.message,true);
+  }
+});
 
 let searchTimer;$('#quote-search').addEventListener('input',()=>{clearTimeout(searchTimer);
   searchTimer=setTimeout(()=>renderList().catch(e=>toast(e.message,true)),250);

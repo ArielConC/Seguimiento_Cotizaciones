@@ -258,6 +258,7 @@ def initialize() -> None:
             "created_by_name": "TEXT NOT NULL DEFAULT ''", "last_reviewed_at": "TEXT",
             "last_reviewed_by": "INTEGER",
             "distributor_code": "TEXT NOT NULL DEFAULT ''",
+            "client_response": "TEXT NOT NULL DEFAULT 'pending'", # <--- NUEVA COLUMNA
         })
         _ensure_columns(db, "quote_events", {
             "follow_up_type": "TEXT NOT NULL DEFAULT ''", "user_id": "INTEGER",
@@ -686,7 +687,8 @@ def get_quote(quote_id: int) -> dict[str, Any]:
 
 def update_quote(quote_id: int, status: str, comment: str, loss_reason: str, follow_up_type: str,
                  is_safe: bool, po_total_usd: float | None, po_date: str | None = None,
-                 actor: dict[str, Any] | None = None, invoices: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+                 actor: dict[str, Any] | None = None, invoices: list[dict[str, Any]] | None = None,
+                 client_response: str = "pending") -> dict[str, Any]:
     if status not in {"pending", "po", "lost"}:
         raise ValueError("Invalid status")
     if follow_up_type not in {"email", "call", "visit"}:
@@ -712,6 +714,8 @@ def update_quote(quote_id: int, status: str, comment: str, loss_reason: str, fol
         automatic=""
         if status=="po" and (current["status"]!="po" or invoice_changed):
             automatic=po_invoices.automatic_comment(normalized_invoices,"USD",str((actor or {}).get("language") or "en"),current["status"]=="po")
+        
+        # Blindaje del comentario
         saved_comment=automatic or comment
         changes = {"status":status != current["status"],"loss":loss_reason != current["loss_reason"],
                    "safe":int(is_safe) != int(current["is_safe"]),"invoices":invoice_changed,
@@ -720,9 +724,9 @@ def update_quote(quote_id: int, status: str, comment: str, loss_reason: str, fol
         db.execute(
             """UPDATE quotes SET status=?,loss_reason=?,follow_up_type=?,is_safe=?,po_total_usd=?,po_date=?,
             po_detected=CASE WHEN ?='po' THEN 1 ELSE po_detected END,comment=CASE WHEN ?<>'' THEN ? ELSE comment END,
-            updated_at=?,last_reviewed_at=?,last_reviewed_by=?,status_changed_at=CASE WHEN status<>? THEN ? ELSE status_changed_at END
+            client_response=?,updated_at=?,last_reviewed_at=?,last_reviewed_by=?,status_changed_at=CASE WHEN status<>? THEN ? ELSE status_changed_at END
             WHERE id=?""",
-            (status,loss_reason,follow_up_type,int(is_safe),po_total_usd,po_date,status,saved_comment,saved_comment,timestamp,timestamp,
+            (status,loss_reason,follow_up_type,int(is_safe),po_total_usd,po_date,status,saved_comment,saved_comment,client_response,timestamp,timestamp,
              actor_id,status,timestamp,quote_id),
         )
         if status=="po":
@@ -751,7 +755,6 @@ def update_quote(quote_id: int, status: str, comment: str, loss_reason: str, fol
                 db.execute("INSERT INTO quote_events(quote_id,event_type,follow_up_type,note,user_id,user_name,created_at) VALUES(?,?,?,?,?,?,?)", (quote_id,event_type,follow_up_type,note,actor_id,actor_name,timestamp))
     return get_quote(quote_id)
 
-
 def dashboard(agent: str = "", start: str = "", end: str = "") -> dict[str, Any]:
     start, end = validate_period(start, end)
     agent_clause = " AND q.nt_agent=?" if agent else ""
@@ -778,6 +781,19 @@ def dashboard(agent: str = "", start: str = "", end: str = "") -> dict[str, Any]
             f"""SELECT COUNT(*) AS value FROM quotes q WHERE q.status='lost' AND q.is_archived=0
             AND q.is_historical=0 {agent_clause}{quote_period}""", quote_params).fetchone()["value"]
         counts = {**pending, **po, "lost": lost, "total": int(pending["all_pending"] or 0)+int(po["po"] or 0)+int(lost or 0)}
+        
+        # --- NUEVO: Gráfica de Efectividad de Contacto ---
+        responses_raw = rows_to_dicts(db.execute(
+            f"""SELECT q.client_response, COUNT(*) AS count
+            FROM quotes q WHERE q.status='pending' AND q.is_archived=0 AND q.is_historical=0
+            {agent_clause}{quote_period} GROUP BY q.client_response""", quote_params).fetchall())
+        responses = {"yes": 0, "no": 0, "pending": 0}
+        for r in responses_raw:
+            val = r.get("client_response") or "pending"
+            if val in responses:
+                responses[val] += int(r["count"])
+        # -------------------------------------------------
+        
         priorities = rows_to_dicts(db.execute(
             f"""SELECT q.priority,COUNT(*) AS count,COALESCE(SUM(q.total_usd),0) AS value
             FROM quotes q WHERE q.status='pending' AND q.is_archived=0 AND q.is_historical=0
@@ -802,10 +818,9 @@ def dashboard(agent: str = "", start: str = "", end: str = "") -> dict[str, Any]
             AND q.is_archived=0 {agent_clause}""", agent_params).fetchall())
         overdue_all = [decorate_quote(row) for row in pending_rows]
         overdue_all = sorted((row for row in overdue_all if row["overdue"]), key=lambda row: row["days_since_activity"], reverse=True)
-    return {"currency":"USD","counts":counts,"added_today":added_today,"po_today":po_today,"po_missing":po_missing,
+    return {"currency":"USD","counts":counts,"responses":responses,"added_today":added_today,"po_today":po_today,"po_missing":po_missing,
             "priorities":priorities,"last_import":dict(last_import) if last_import else None,
             "overdue_count":len(overdue_all),"overdue_quotes":overdue_all[:8],"start_date":start,"end_date":end}
-
 
 def agents() -> list[str]:
     with connect() as db:

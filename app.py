@@ -221,7 +221,22 @@ class Handler(BaseHTTPRequestHandler):
             if re.fullmatch(r"/api/quotes/\d+",parsed.path):
                 quote_id=int(parsed.path.rsplit("/",1)[1]); current=database.get_quote(quote_id)
                 if not auth.can_edit_quote(user,current["nt_agent"]): raise PermissionError("You can only manage quotations assigned to you")
-                result=database.update_quote(quote_id,str(payload.get("status","pending")),str(payload.get("comment","")),str(payload.get("loss_reason","")),str(payload.get("follow_up_type","")),bool(payload.get("is_safe",False)),payload.get("po_total"),str(payload.get("po_date") or "") or None,user,payload.get("invoices"))
+                
+                # --- AQUÍ INYECTAMOS LA LECTURA DE CLIENT_RESPONSE Y ASEGURAMOS EL COMENTARIO ---
+                result = database.update_quote(
+                    quote_id,
+                    str(payload.get("status","pending")),
+                    str(payload.get("comment","")),
+                    str(payload.get("loss_reason","")),
+                    str(payload.get("follow_up_type","")),
+                    bool(payload.get("is_safe",False)),
+                    payload.get("po_total"),
+                    str(payload.get("po_date") or "") or None,
+                    user,
+                    payload.get("invoices"),
+                    client_response=str(payload.get("client_response","pending"))
+                )
+                
                 detail=f"status={result['status']}; invoices={len(result.get('invoices',[]))}; po_total={result.get('po_total_usd') or ''}"
                 auth.audit(user,"quote_review_saved","standard","quote",str(quote_id),detail=detail,ip=self._client_ip()); self._json(result)
             elif re.fullmatch(r"/api/special/quotes/\d+",parsed.path):
