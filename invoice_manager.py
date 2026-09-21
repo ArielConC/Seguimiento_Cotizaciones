@@ -186,7 +186,7 @@ def preview(workspace: str, content: bytes, filename: str, user: dict[str, Any])
 
     with database.connect() as db:
         quotes = db.execute(
-            """SELECT id,folio,status,customer_order FROM quotes
+            """SELECT id,folio,status,customer_order,po_detected,po_date FROM quotes
             WHERE is_historical=0 AND is_archived=0 AND TRIM(customer_order)<>''"""
         ).fetchall()
         matches: dict[str, list[dict[str, Any]]] = {}
@@ -208,7 +208,10 @@ def preview(workspace: str, content: bytes, filename: str, user: dict[str, Any])
     counts = {"new": 0, "duplicate": 0, "unmatched": 0, "ambiguous": 0, "not_po": 0, "invalid": len(errors)}
     for row in parsed:
         candidates = matches.get(_normalize(row["customer_order"]), [])
-        po_candidates = [quote for quote in candidates if quote["status"] == "po"]
+        po_candidates = [
+            quote for quote in candidates
+            if quote["status"] == "pending" and int(quote["po_detected"] or 0) == 1 and not quote["po_date"]
+        ]
         result = {**row, "quote_folio": "", "status": ""}
         if not candidates:
             result["status"] = "unmatched"
@@ -281,7 +284,7 @@ def confirm(workspace: str, token: str, user: dict[str, Any]) -> dict[str, Any]:
 
         for quote_id, incoming in grouped.items():
             quote = db.execute("SELECT * FROM quotes WHERE id=?", (quote_id,)).fetchone()
-            if not quote or quote["status"] != "po":
+            if not quote or quote["status"] != "pending" or not int(quote["po_detected"] or 0) or quote["po_date"]:
                 continue
             current = po_invoices.active(db, "quote_invoices", quote_id)
             actual = [row for row in current if not int(row.get("is_legacy") or 0)]
@@ -307,16 +310,25 @@ def confirm(workspace: str, token: str, user: dict[str, Any]) -> dict[str, Any]:
             combined = po_invoices.normalize(actual + added_for_quote, "USD")
             po_invoices.replace(db, "quote_invoices", quote_id, combined, user["id"], user["display_name"], timestamp)
             total, po_date = po_invoices.totals(combined)
-            db.execute("UPDATE quotes SET po_total_usd=?,po_date=?,updated_at=? WHERE id=?", (total, po_date, timestamp, quote_id))
-            note = po_invoices.automatic_comment(combined, "USD", str(user.get("language") or "en"), updated=True)
+            db.execute(
+                """UPDATE quotes SET status='po',is_safe=0,loss_reason='',po_total_usd=?,po_date=?,
+                updated_at=?,status_changed_at=? WHERE id=?""",
+                (total, po_date, timestamp, timestamp, quote_id),
+            )
+            note = po_invoices.automatic_comment(combined, "USD", str(user.get("language") or "en"), updated=False)
             db.execute(
                 """INSERT INTO quote_comments(quote_id,body,user_id,user_name,created_at)
                 VALUES(?,?,?,?,?)""", (quote_id, note, user["id"], user["display_name"], timestamp),
             )
             db.execute(
                 """INSERT INTO quote_events(quote_id,event_type,follow_up_type,note,user_id,user_name,created_at)
-                VALUES(?,'po_invoices_updated',?,?,?,?,?)""",
+                VALUES(?,'po_invoices_registered',?,?,?,?,?)""",
                 (quote_id, quote["follow_up_type"] or "", note, user["id"], user["display_name"], timestamp),
+            )
+            db.execute(
+                """INSERT INTO quote_events(quote_id,event_type,from_status,to_status,follow_up_type,note,
+                user_id,user_name,created_at) VALUES(?,'status_changed','pending','po',?,'',?,?,?)""",
+                (quote_id, quote["follow_up_type"] or "", user["id"], user["display_name"], timestamp),
             )
             invoices_added += len(added_for_quote)
             quotes_updated += 1
