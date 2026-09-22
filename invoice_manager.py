@@ -48,8 +48,9 @@ def initialize() -> None:
                 records = json.loads(b["payload_json"])
                 for r in records:
                     qid = int(r["quote_id"])
+                    exist =db.excecute("SELECT 1 FROM po_invoices WHERE quote_id=?", (qid,)).fetchone()
                     #Solo lo inserta si no existe ya
-                    db.execute("INSERT INTO po_invoices (quote_id) SELECT ? WHERE NOT EXISTS(SELECT 1 FROM po_invoices WHERE quote_id=?)", (qid, qid))
+                    db.execute("INSERT INTO po_invoices (quote_id) VALUES (?)",(qid,))
             except Exception:
                 pass
 
@@ -220,11 +221,12 @@ def preview(workspace: str, content: bytes, filename: str, user: dict[str, Any])
     
     for row in parsed:
         candidates = matches.get(_normalize(row["customer_order"]), [])
-        # CAMBIO 1: Aceptamos CUALQUIER cotización Pendiente (tenga o no po_detected) que no tenga fecha PO
+        # CAMBIO CLAVE: Ahora aceptamos cotizaciones Pendientes y las que YA SON PO
         po_candidates = [
             quote for quote in candidates
-            if quote["status"] == "pending" and not quote["po_date"]
+            if quote["status"] in ("pending", "po")
         ]
+        
         result = {**row, "quote_folio": "", "status": ""}
         
         if not candidates:
@@ -235,10 +237,7 @@ def preview(workspace: str, content: bytes, filename: str, user: dict[str, Any])
             result["quote_folio"] = candidates[0]["folio"]
             counts["not_po"] += 1
         else:
-            # CAMBIO 2: Si hay varias cotizaciones con la misma PO, inyectamos la factura a TODAS
             added_to_any = False
-            is_duplicate = False
-            
             for quote in po_candidates:
                 quote_id = int(quote["id"])
                 key = (quote_id, _normalize(row["invoice_series"]), _normalize(row["invoice_number"]))
@@ -246,9 +245,9 @@ def preview(workspace: str, content: bytes, filename: str, user: dict[str, Any])
                 if key in upload_seen:
                     prior = upload_seen[key]
                     if prior["invoice_date"] == row["invoice_date"] and abs(float(prior["amount"]) - float(row["amount"])) < 0.005:
-                        is_duplicate = True
+                        pass # Ya contada como duplicada en la subida
                 elif key[1:] in existing.get(quote_id, set()):
-                    is_duplicate = True
+                    pass # Ya existe en la base de datos
                 else:
                     upload_seen[key] = row
                     new_records.append({**row, "quote_id": quote_id, "quote_folio": quote["folio"]})
@@ -303,8 +302,8 @@ def confirm(workspace: str, token: str, user: dict[str, Any]) -> dict[str, Any]:
 
         for quote_id, incoming in grouped.items():
             quote = db.execute("SELECT * FROM quotes WHERE id=?", (quote_id,)).fetchone()
-            # CAMBIO 3: Quitamos la restricción de po_detected al confirmar
-            if not quote or quote["status"] != "pending" or quote["po_date"]:
+            # Dejamos pasar Pendientes y PO
+            if not quote or quote["status"] not in ("pending", "po"):
                 continue
             
             current = po_invoices.active(db, "quote_invoices", quote_id)
@@ -354,7 +353,10 @@ def confirm(workspace: str, token: str, user: dict[str, Any]) -> dict[str, Any]:
             invoices_added += len(added_for_quote)
             quotes_updated += 1
 
-            db.execute("INSERT INTO po_invoices (quote_id) SELECT ? WHERE NOT EXIST(SELECT 1 FROM po_invoices WHERE quote_id?)", (quote_id, quote_id))
+            # Gafete de Excel A Prueba de Fallos
+            exists = db.execute("SELECT 1 FROM po_invoices WHERE quote_id=?", (quote_id,)).fetchone()
+            if not exists:
+                db.execute("INSERT INTO po_invoices (quote_id) VALUES (?)", (quote_id,))
 
         db.execute("UPDATE invoice_import_batches SET status='confirmed',confirmed_at=? WHERE token=?", (timestamp, token))
 
