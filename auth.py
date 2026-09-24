@@ -129,7 +129,7 @@ def _create_session(db, user_id: int, ip: str, user_agent: str) -> tuple[str, st
 def bootstrap(username: str, password: str, language: str, ip: str = "", user_agent: str = "") -> tuple[dict[str, Any], str]:
     if not bootstrap_needed():
         raise ValueError("Initial setup has already been completed")
-    language = language if language in {"en", "es"} else "en"
+    language = language if language in {"en", "es", "ja"} else "en"
     salt, digest = _hash_password(password)
     with database.connect() as db:
         db.execute("BEGIN IMMEDIATE")
@@ -166,7 +166,7 @@ def login(username: str, password: str, language: str, ip: str = "", user_agent:
             if not user["password_hash"]:
                 raise ValueError("This account needs a password reset by a Superadmin")
             raise ValueError("Invalid username or password")
-        language = language if language in {"en", "es"} else user["language"]
+        language = language if language in {"en", "es", "ja"} else user["language"]
         db.execute("UPDATE users SET failed_attempts=0,locked_until=NULL,language=?,updated_at=? WHERE id=?", (language,database.now_iso(),user["id"]))
         token, csrf = _create_session(db, int(user["id"]), ip, user_agent)
         user = db.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone()
@@ -294,7 +294,7 @@ def update_user(requester: dict[str, Any], user_id: int, payload: dict[str, Any]
         if user_id==requester["id"] and not active: raise ValueError("You cannot deactivate your own account")
         name=str(payload.get("display_name",current["display_name"])).strip()
         agent=str(payload.get("agent_name",current["agent_name"])).strip()
-        language=str(payload.get("language",current["language"])); language=language if language in {"en","es"} else "en"
+        language=str(payload.get("language",current["language"])); language=language if language in {"en","es","ja"} else "en"
         
         # --- CORRECCIÓN: Convertir a diccionario antes de usar .get() ---
         current_dict = dict(current)
@@ -318,7 +318,7 @@ def update_user(requester: dict[str, Any], user_id: int, payload: dict[str, Any]
 
 
 def update_preferences(user: dict[str, Any], language: str) -> dict[str, Any]:
-    if language not in {"en","es"}: raise ValueError("Invalid language")
+    if language not in {"en","es","ja"}: raise ValueError("Invalid language")
     with database.connect() as db:
         db.execute("UPDATE users SET language=?,updated_at=? WHERE id=?",(language,database.now_iso(),user["id"]))
         row=db.execute("SELECT * FROM users WHERE id=?",(user["id"],)).fetchone()

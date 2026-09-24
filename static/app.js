@@ -9,9 +9,10 @@ const I18N={
 };
 const t=k=>I18N[state.language]?.[k]||I18N.en[k]||k;
 const currency=()=>state.system==='special'?'JPY':'USD';
-const money=v=>new Intl.NumberFormat(state.language==='es'?'es-MX':'en-US',{style:'currency',currency:currency(),maximumFractionDigits:currency()==='JPY'?0:2}).format(Number(v||0));
-const fmtDate=v=>v?new Intl.DateTimeFormat(state.language==='es'?'es-MX':'en-US',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(`${v}T12:00:00`)):'—';
-const fmtDT=v=>v?new Intl.DateTimeFormat(state.language==='es'?'es-MX':'en-US',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'America/Mexico_City'}).format(new Date(v)):'—';
+const locale=()=>state.language==='es'?'es-MX':state.language==='ja'?'ja-JP':'en-US';
+const money=v=>new Intl.NumberFormat(locale(),{style:'currency',currency:currency(),maximumFractionDigits:currency()==='JPY'?0:2}).format(Number(v||0));
+const fmtDate=v=>v?new Intl.DateTimeFormat(locale(),{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(`${v}T12:00:00`)):'—';
+const fmtDT=v=>v?new Intl.DateTimeFormat(locale(),{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'America/Mexico_City'}).format(new Date(v)):'—';
 const prefix=()=>state.system==='special'?'/api/special':'/api';
 const isoLocal=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const businessToday=()=>new Date(`${state.calendar?.today||isoLocal(new Date())}T12:00:00`);

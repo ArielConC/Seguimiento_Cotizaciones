@@ -272,7 +272,7 @@ def build_report_pdf(data: dict[str,Any], target: Path, language: str = "en") ->
 
     conversion=data.get("conversion_rate"); conversion_text="N/A" if conversion is None else f"{float(conversion):.1f}%"
     kpis=[
-        ("Pending",_money(data.get("pending_value"),currency),f"{int(data.get('pending_count') or 0)} {('cotizaciones' if es else 'quotations')}"),
+        ("Pending actual" if es else "Current pending",_money(data.get("pending_value"),currency),f"{int(data.get('pending_count') or 0)} {('cotizaciones' if es else 'quotations')}"),
         ("Nuevas" if es else "New",str(int(data.get("new_quotes") or 0)),_money(data.get("new_value"),currency)),
         ("Revisadas" if es else "Reviewed",str(int(data.get("quotes_reviewed") or 0)),"Únicas" if es else "Unique quotations"),
         ("PO",str(int(data.get("po_changes") or 0)),_money(data.get("po_value"),currency)),
@@ -288,7 +288,7 @@ def build_report_pdf(data: dict[str,Any], target: Path, language: str = "en") ->
 
     left_x=margin; left_w=315; right_x=349; right_w=419; row_h=100
     priorities=data.get("priorities") or []; max_priority=max([float(row.get("value") or 0) for row in priorities] or [1])
-    outline(left_x,338,left_w,row_h,panel_green,"Pipeline por prioridad" if es else "Pipeline by priority")
+    outline(left_x,338,left_w,row_h,panel_green,"Pipeline actual por prioridad" if es else "Current pipeline by priority")
     priority_colors={"S":RED,"A":ORANGE,"B":colors.HexColor("#3B9BC7"),"C":steel}
     for index,priority in enumerate("SABC"):
         row=next((item for item in priorities if item.get("priority")==priority),{"count":0,"value":0}); y=391-index*16
@@ -297,7 +297,7 @@ def build_report_pdf(data: dict[str,Any], target: Path, language: str = "en") ->
         bar_x=left_x+132; bar_w=left_w-148; c.setFillColor(colors.HexColor("#E4EAEE")); c.roundRect(bar_x,y-2,bar_w,8,2,fill=1,stroke=0)
         amount=float(row.get("value") or 0); c.setFillColor(priority_colors[priority]); c.roundRect(bar_x,y-2,max(1,bar_w*(amount/max_priority if max_priority else 0)),8,2,fill=1,stroke=0)
 
-    outline(right_x,338,right_w,row_h,panel_green,"Resultados por periodos" if es else "Period results")
+    outline(right_x,338,right_w,row_h,panel_green,"Resultados del periodo" if es else "Period results")
     quoted=float(data.get("po_quoted_value") or 0); po_value=float(data.get("po_value") or 0); variance=po_value-quoted
     variance_pct=(variance/quoted*100) if quoted else None; average=data.get("average_po_days")
     result_rows=[
@@ -307,7 +307,7 @@ def build_report_pdf(data: dict[str,Any], target: Path, language: str = "en") ->
         ("Tiempo promedio QT a PO" if es else "Average QT to PO","N/A" if average is None else f"{float(average):.1f} {('días' if es else 'days')}")]
     for index,(label,value) in enumerate(result_rows): pair(right_x+24,right_x+right_w-18,394-index*17,label,value,GREEN if index==1 else ink,7.3)
 
-    alerts=data.get("alerts") or {}; outline(left_x,225,left_w,row_h,panel_green,"Alertas de seguimiento" if es else "Follow-up alerts")
+    alerts=data.get("alerts") or {}; outline(left_x,225,left_w,row_h,panel_green,"Alertas actuales de seguimiento" if es else "Current follow-up alerts")
     alert_rows=[
         ("9-14 días" if es else "9-14 days",alerts.get("followup_9_14",{}),ORANGE),
         ("15+ días" if es else "15+ days",alerts.get("followup_15_plus",{}),RED),
@@ -316,7 +316,7 @@ def build_report_pdf(data: dict[str,Any], target: Path, language: str = "en") ->
     for index,(label,item,color) in enumerate(alert_rows):
         value=str(int(item.get("count") or 0)) if index==3 else alert_value(item); pair(left_x+24,left_x+left_w-18,279-index*17,label,value,color,7.3)
 
-    outline(right_x,225,right_w,row_h,panel_green,"Pérdidas" if es else "Losses")
+    outline(right_x,225,right_w,row_h,panel_green,"Pérdidas acumuladas" if es else "Cumulative losses")
     loss_items=sorted((data.get("loss_breakdown_detail") or {}).items(),key=lambda item:(-float(item[1].get("value") or 0),-int(item[1].get("count") or 0)))
     if len(loss_items)>3:
         other={"count":sum(int(item[1].get("count") or 0) for item in loss_items[2:]),"value":sum(float(item[1].get("value") or 0) for item in loss_items[2:])}
@@ -325,34 +325,22 @@ def build_report_pdf(data: dict[str,Any], target: Path, language: str = "en") ->
         for index,(reason,item) in enumerate(loss_items[:3]): pair(right_x+24,right_x+right_w-18,279-index*17,reason,alert_value(item),PURPLE,7.3)
         c.setFillColor(ink); c.setFont("Helvetica-Bold",6.6); c.drawString(right_x+24,230,txt(("PRINCIPAL MOTIVO: " if es else "MAIN REASON: ")+str(loss_items[0][0]),58))
     else:
-        c.setFillColor(steel); c.setFont("Helvetica",7.3); c.drawString(right_x+24,267,"Sin pérdidas en el periodo" if es else "No losses during this period")
+        c.setFillColor(steel); c.setFont("Helvetica",7.3); c.drawString(right_x+24,267,"Sin pérdidas activas" if es else "No current lost quotations")
 
-    outline(margin,70,width-2*margin,142,panel_orange,"Operaciones que requieren atención" if es else "Quotations requiring action")
-    action_rows=list(data.get("action_rows") or [])[:10]; remaining=int(data.get("action_remaining") or 0)
+    outline(margin,32,width-2*margin,180,panel_orange,"Operaciones que requieren atención" if es else "Quotations requiring action")
+    action_rows=list(data.get("action_rows") or [])[:8]; remaining=int(data.get("action_remaining") or 0)
     if remaining:
         c.setFillColor(RED); c.setFont("Helvetica-Bold",6); c.drawRightString(width-margin-14,194,f"+{remaining} "+("adicionales" if es else "additional"))
     columns=[("Pri.",42),("QT",68),("Distrib.",65),("End User",205),(currency,86),("Días sin seguimiento" if es else "Days without follow-up",104),("Agente" if es else "Agent",146)]
     cursor=margin+14; c.setFillColor(ink); c.setFont("Helvetica-Bold",6.2)
-    for label,col_w in columns: c.drawString(cursor,176,txt(label,24)); cursor+=col_w
+    for label,col_w in columns: c.drawString(cursor,178,txt(label,24)); cursor+=col_w
     if action_rows:
         for index,row in enumerate(action_rows):
-            y=163-index*9.3; values=[row.get("priority"),row.get("folio"),row.get("distributor_code"),row.get("end_user"),_money(row.get("amount"),currency),row.get("days_since_activity"),row.get("nt_agent")]
+            y=161-index*15; values=[row.get("priority"),row.get("folio"),row.get("distributor_code"),row.get("end_user"),_money(row.get("amount"),currency),row.get("days_since_activity"),row.get("nt_agent")]
             cursor=margin+14; c.setFillColor(ink); c.setFont("Helvetica",5.8); limits=[4,13,10,38,20,6,26]
             for value,(_,col_w),limit in zip(values,columns,limits): c.drawString(cursor,y,txt(value,limit)); cursor+=col_w
     else:
-        c.setFillColor(panel_green); c.setFont("Helvetica-Bold",8); c.drawCentredString(width/2,135,"No hay acciones urgentes en el periodo." if es else "No urgent actions for this period.")
-
-    due=alerts.get("followup_15_plus") or {}; rate="N/A" if conversion is None else f"{float(conversion):.1f}%"
-    conclusions=(
-        [f"Pipeline pendiente: {_money(data.get('pending_value'),currency)} en {int(data.get('pending_count') or 0)} cotizaciones.",
-         f"Resultado: {_money(data.get('po_value'),currency)} convertido a PO; conversión {rate}.",
-         f"Atención: {int(due.get('count') or 0)} cotizaciones por {_money(due.get('value'),currency)} llevan 15+ días sin seguimiento."]
-        if es else
-        [f"Pending pipeline: {_money(data.get('pending_value'),currency)} across {int(data.get('pending_count') or 0)} quotations.",
-         f"Result: {_money(data.get('po_value'),currency)} converted to PO; conversion {rate}.",
-         f"Attention: {int(due.get('count') or 0)} quotations worth {_money(due.get('value'),currency)} have 15+ days without follow-up."])
-    c.setFillColor(ink); c.setFont("Helvetica-Bold",6.6)
-    for index,conclusion in enumerate(conclusions): c.drawString(margin,52-index*10,txt(conclusion,145))
+        c.setFillColor(panel_green); c.setFont("Helvetica-Bold",8); c.drawCentredString(width/2,120,"No hay operaciones con 10+ días sin seguimiento." if es else "No quotations have 10+ days without follow-up.")
     c.setStrokeColor(colors.HexColor("#D6DDE2")); c.line(margin,18,width-margin,18); c.setFillColor(steel); c.setFont("Helvetica",5.8)
     c.drawString(margin,8,"NT TOOL - Sales follow-up"); c.drawRightString(width-margin,8,"1 / 1")
     c.showPage(); c.save(); content=buffer.getvalue(); target.parent.mkdir(parents=True,exist_ok=True); target.write_bytes(content); return content

@@ -317,6 +317,15 @@ Los requisitos de las etapas anteriores se encuentran implementados y verificado
 ## Verificación
 
 - [x] Validación de sintaxis de JavaScript y Python.
-- [x] Veinticinco pruebas automatizadas aprobadas, incluidas validaciones de configuración segura para Railway, periodos, vistas gestionadas, respuesta del cliente y alerta pasiva por antigüedad.
+- [x] Veintiséis pruebas automatizadas aprobadas, incluidas validaciones de configuración segura para Railway, periodos, vistas gestionadas, respuesta del cliente y alerta pasiva por antigüedad.
 - [x] Validación de lectura contra los dos libros de ejemplo.
 - [x] Prueba HTTP completa de acceso, importación de ambos espacios, gestión y exportación PDF/Excel.
+
+## Ajustes del reporte gerencial y japonés - 24 de septiembre de 2026
+
+- [x] El periodo seleccionado controla Nuevas, Revisadas, PO, Lost y los resultados del periodo, pero no limita la fotografía actual de Pending.
+- [x] Pending, Pipeline por prioridad y Alertas de seguimiento usan todas las cotizaciones activas actuales, aunque la cotización sea anterior al rango del reporte.
+- [x] Pérdidas muestra el acumulado vigente por motivo e importe; el indicador superior Lost conserva únicamente los cambios a Lost ocurridos dentro del periodo.
+- [x] Operaciones que requieren atención muestra como máximo ocho cotizaciones Pending no seguras con 10 días o más sin seguimiento, ordenadas por prioridad, antigüedad e importe.
+- [x] Se eliminó la conclusión repetitiva del final y se amplió la tabla de atención para aprovechar el espacio.
+- [x] Se restauró Japonés en el acceso y en el selector de idioma, incluyendo persistencia de la preferencia y formato regional de fechas e importes.

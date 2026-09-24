@@ -937,20 +937,15 @@ def executive_pipeline(rows: list[dict[str, Any]], workspace: str) -> dict[str, 
         }
 
     candidates = []
+    priority_order = {"S": 0, "A": 1, "B": 2, "C": 3}
     for row in decorated:
-        categories = []
-        if row.get("priority") in {"S", "A"} and not row.get("is_safe") and row["days_since_activity"] >= 15:
-            categories.append(0)
-        if row["quote_age_days"] > 90:
-            categories.append(1)
-        if workspace == "standard" and row.get("po_detected") and not row.get("po_date"):
-            categories.append(2)
-        if not categories:
+        if row.get("is_safe") or row["days_since_activity"] < 10:
             continue
-        candidates.append((min(categories), -float(row.get(amount_key) or 0), -row["days_since_activity"], row))
+        candidates.append((priority_order.get(str(row.get("priority") or "C"), 4), -row["days_since_activity"],
+                           -float(row.get(amount_key) or 0), row))
     candidates.sort(key=lambda item: item[:3])
     action_rows = []
-    for _, _, _, row in candidates[:10]:
+    for _, _, _, row in candidates[:8]:
         action_rows.append({
             "priority": row.get("priority") or "C",
             "folio": row.get("folio") or row.get("source_quote_number") or f"SPQ-{row.get('id',0):05d}",
@@ -979,7 +974,7 @@ def report_activity(start_date: str, end_date: str, actor_user_id: int | None = 
     if end < start: raise ValueError("End date cannot be before start date")
     event_actor = " AND e.user_id=?" if actor_user_id else ""; event_agent = " AND q.nt_agent=?" if agent else ""
     event_params: list[Any] = [start_date,end_date] + ([actor_user_id] if actor_user_id else []) + ([agent] if agent else [])
-    quote_agent = " AND q.nt_agent=?" if agent else ""; quote_params: list[Any] = [start_date,end_date] + ([agent] if agent else [])
+    quote_agent = " AND q.nt_agent=?" if agent else ""; quote_params: list[Any] = [agent] if agent else []
     created_actor = " AND q.created_by_user_id=?" if actor_user_id else ""
     created_params: list[Any] = [start_date,end_date] + ([actor_user_id] if actor_user_id else []) + ([agent] if agent else [])
     with connect() as db:
@@ -993,7 +988,11 @@ def report_activity(start_date: str, end_date: str, actor_user_id: int | None = 
         new_quotes = rows_to_dicts(db.execute(
             f"SELECT q.* FROM quotes q WHERE date(q.discovered_at) BETWEEN ? AND ? {created_actor} {quote_agent} AND q.is_historical=0 AND q.is_archived=0 ORDER BY q.discovered_at", created_params).fetchall())
         pending_rows = rows_to_dicts(db.execute(
-            f"SELECT q.* FROM quotes q WHERE q.status='pending' AND q.quote_date BETWEEN ? AND ? {quote_agent} AND q.is_historical=0 AND q.is_archived=0",
+            f"SELECT q.* FROM quotes q WHERE q.status='pending' {quote_agent} AND q.is_historical=0 AND q.is_archived=0",
+            quote_params,
+        ).fetchall())
+        current_lost_rows = rows_to_dicts(db.execute(
+            f"SELECT q.loss_reason,q.total_usd FROM quotes q WHERE q.status='lost' {quote_agent} AND q.is_historical=0 AND q.is_archived=0",
             quote_params,
         ).fetchall())
     reviews = [e for e in events if e["event_type"]=="review_saved"]
@@ -1001,9 +1000,9 @@ def report_activity(start_date: str, end_date: str, actor_user_id: int | None = 
     lost_by_quote = {e["quote_id"]:e for e in status_events if e["to_status"]=="lost"}
     po_by_quote = {e["quote_id"]:e for e in status_events if e["to_status"]=="po"}
     loss_breakdown: dict[str,int] = {}; loss_breakdown_detail: dict[str,dict[str,Any]] = {}
-    for e in lost_by_quote.values():
-        reason = e.get("note") or e.get("loss_reason") or "Not specified"; loss_breakdown[reason] = loss_breakdown.get(reason,0)+1
-        detail=loss_breakdown_detail.setdefault(reason,{"count":0,"value":0.0}); detail["count"]+=1; detail["value"]+=float(e.get("total_usd") or 0)
+    for row in current_lost_rows:
+        reason = row.get("loss_reason") or "Not specified"; loss_breakdown[reason] = loss_breakdown.get(reason,0)+1
+        detail=loss_breakdown_detail.setdefault(reason,{"count":0,"value":0.0}); detail["count"]+=1; detail["value"]+=float(row.get("total_usd") or 0)
     reviewed_ids = {e["quote_id"] for e in reviews}; reviewed = []
     for quote_id in reviewed_ids:
         matching = [e for e in events if e["quote_id"]==quote_id and e["event_type"] in {"review_saved","comment_added","status_changed","safe_changed","po_invoices_registered","po_invoices_updated","po_invoices_cleared"}]

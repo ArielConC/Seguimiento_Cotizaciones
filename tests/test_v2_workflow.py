@@ -118,6 +118,7 @@ class V2WorkflowTests(unittest.TestCase):
         reader=PdfReader(BytesIO(pdf)); report_text="\n".join(page.extract_text() or "" for page in reader.pages)
         self.assertTrue(pdf.startswith(b"%PDF")); self.assertEqual(len(reader.pages),1)
         self.assertIn("QUOTATION FOLLOW-UP REPORT",report_text); self.assertIn("CONVERSION",report_text); self.assertIn("QUOTATIONS REQUIRING ACTION",report_text)
+        self.assertNotIn("Pending pipeline:",report_text)
         xlsx_path=Path(self.temp.name)/"report.xlsx"; build_report_xlsx(report,xlsx_path,"es"); report_book=load_workbook(xlsx_path)
         self.assertEqual(report_book.sheetnames,["Resumen","PO","Perdidas","Revisadas"])
         self.assertEqual(report_book["Resumen"]["A11"].value,"Tasas de conversión")
@@ -161,7 +162,7 @@ class V2WorkflowTests(unittest.TestCase):
         self.assertEqual(pipeline["alerts"]["followup_15_plus"]["count"],3)
         self.assertEqual(pipeline["alerts"]["stale_90_plus"]["count"],1)
         self.assertEqual(pipeline["alerts"]["po_date_missing"]["count"],1)
-        self.assertEqual(len(pipeline["action_rows"]),3)
+        self.assertEqual(len(pipeline["action_rows"]),4)
 
     def test_special_duplicate_visibility_and_archive(self)->None:
         content=special_book(); records,errors=special.parse_workbook(content,"special.xlsx")
@@ -377,8 +378,10 @@ class V2WorkflowTests(unittest.TestCase):
         self.assertEqual(javascript.count("$('#user-edit-form').addEventListener('submit'"),1)
         self.assertNotIn("confirm(",javascript)
         self.assertIn('id="stale-warning"',html)
-        self.assertNotIn('<option value="ja">',html)
+        self.assertIn('<option value="ja">',html)
         self.assertIn("Perfil de visualización",javascript)
+        japanese=auth.update_preferences(self.user,"ja")
+        self.assertEqual(japanese["language"],"ja")
 
     def test_client_response_is_persisted_in_both_workspaces(self)->None:
         standard_preview=imports_manager.preview("standard",standard_book(),"daily.xlsx",self.user)
@@ -440,6 +443,24 @@ class V2WorkflowTests(unittest.TestCase):
         self.assertEqual(previous["counts"]["pending"],0)
         self.assertEqual(current["counts"]["po"],0)
         self.assertEqual(current["counts"]["pending"],1)
+
+    def test_report_period_activity_uses_current_pipeline_and_cumulative_losses(self)->None:
+        preview=imports_manager.preview("standard",standard_book(),"daily.xlsx",self.user)
+        imports_manager.confirm("standard",preview["token"],self.user)
+        rows=database.list_quotes({})
+        lost=next(row for row in rows if row["folio"]=="QT-100")
+        pending=next(row for row in rows if row["folio"]=="QTI-101")
+        database.update_quote(lost["id"],"lost","","Over Budget","call",False,None,None,self.user)
+        old_date=(date.today()-timedelta(days=40)).isoformat()
+        with database.connect() as db:
+            db.execute("UPDATE quotes SET quote_date=?,discovered_at=? WHERE id=?",(old_date,old_date,pending["id"]))
+        future=(date.today()+timedelta(days=1)).isoformat()
+        report=database.report_activity(future,future,None,"")
+        self.assertEqual(report["new_quotes"],0)
+        self.assertEqual(report["lost_changes"],0)
+        self.assertEqual(report["pending_count"],1)
+        self.assertEqual(report["pending_value"],500)
+        self.assertEqual(report["loss_breakdown"],{"Over Budget":1})
 
     def test_unmatched_distributor_is_logged_and_details_keep_code(self)->None:
         preview=imports_manager.preview("standard",standard_book(),"daily.xlsx",self.user)

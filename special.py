@@ -553,7 +553,7 @@ def report_activity(start_date:str,end_date:str,actor_user_id:int|None=None,agen
     if end<start: raise ValueError("End date cannot be before start date")
     actor_clause=" AND e.user_id=?" if actor_user_id else ""; agent_clause=" AND q.nt_agent=?" if agent else ""
     event_params=[start_date,end_date]+([actor_user_id] if actor_user_id else [])+([agent] if agent else [])
-    quote_params=[start_date,end_date]+([agent] if agent else [])
+    quote_params=[agent] if agent else []
     created_clause=" AND q.created_by_user_id=?" if actor_user_id else ""; created_params=[start_date,end_date]+([actor_user_id] if actor_user_id else [])+([agent] if agent else [])
     with database.connect() as db:
         events=database.rows_to_dicts(db.execute(f"""SELECT e.*,q.source_quote_number AS folio,q.quote_date,q.customer_name AS end_user,q.nt_agent,q.priority,q.status,
@@ -562,13 +562,14 @@ def report_activity(start_date:str,end_date:str,actor_user_id:int|None=None,agen
             FROM special_quote_events e JOIN special_quotes q ON q.id=e.quote_id
             WHERE date(e.created_at) BETWEEN ? AND ? {actor_clause} {agent_clause} AND q.is_archived=0 ORDER BY e.created_at,e.id""",event_params).fetchall())
         new_rows=database.rows_to_dicts(db.execute(f"SELECT q.* FROM special_quotes q WHERE date(q.discovered_at) BETWEEN ? AND ? {created_clause} {agent_clause} AND q.is_archived=0",created_params).fetchall())
-        pending_rows=database.rows_to_dicts(db.execute(f"SELECT q.* FROM special_quotes q WHERE q.status='pending' AND q.quote_date BETWEEN ? AND ? {agent_clause} AND q.is_archived=0",quote_params).fetchall())
+        pending_rows=database.rows_to_dicts(db.execute(f"SELECT q.* FROM special_quotes q WHERE q.status='pending' {agent_clause} AND q.is_archived=0",quote_params).fetchall())
+        current_lost_rows=database.rows_to_dicts(db.execute(f"SELECT q.loss_reason,q.unit_price FROM special_quotes q WHERE q.status='lost' {agent_clause} AND q.is_archived=0",quote_params).fetchall())
     reviews=[e for e in events if e["event_type"]=="review_saved"]; status_events=[e for e in events if e["event_type"]=="status_changed"]
     lost={e["quote_id"]:e for e in status_events if e["to_status"]=="lost"}; pos={e["quote_id"]:e for e in status_events if e["to_status"]=="po"}
     breakdown:dict[str,int]={}; breakdown_detail:dict[str,dict[str,Any]]={}
-    for e in lost.values():
-        reason=e.get("note") or e.get("loss_reason") or "Not specified"; breakdown[reason]=breakdown.get(reason,0)+1
-        detail=breakdown_detail.setdefault(reason,{"count":0,"value":0.0}); detail["count"]+=1; detail["value"]+=float(e.get("total_usd") or 0)
+    for row in current_lost_rows:
+        reason=row.get("loss_reason") or "Not specified"; breakdown[reason]=breakdown.get(reason,0)+1
+        detail=breakdown_detail.setdefault(reason,{"count":0,"value":0.0}); detail["count"]+=1; detail["value"]+=float(row.get("unit_price") or 0)
     reviewed_ids={e["quote_id"] for e in reviews}; reviewed=[]
     for quote_id in reviewed_ids:
         matching=[e for e in events if e["quote_id"]==quote_id and e["event_type"] in {"review_saved","comment_added","status_changed","safe_changed","po_invoices_registered","po_invoices_updated","po_invoices_cleared"}]; base=matching[0]
