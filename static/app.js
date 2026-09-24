@@ -1,30 +1,28 @@
-const state={me:null,system:null,view:'dashboard',quote:null,language:'en',importToken:null,bootstrap:false,users:[]};
+const state={me:null,system:null,view:'dashboard',quote:null,language:'en',importToken:null,bootstrap:false,users:[],calendar:null};
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const esc=(v='')=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 
 const I18N={
-  en:{sales_followup:'Sales follow-up',dashboard:'Dashboard',priorities:'SABC Priorities',managed:'Managed',safe:'Safe',po_missing:'PO Date Missing',lost:'Lost',archive:'Archive',historical:'Historical',reports:'Reports',users:'Users',quotation_management:'QUOTATION MANAGEMENT',agent:'NT Tool agent',language:'Language',upload_excel:'Upload Excel',logout:'Log out',change_password:'Change password',current_password:'Current password',new_password:'New password',pending_total:'Pending quotation total',in_followup:'IN FOLLOW-UP',priority_distribution:'Priority distribution',daily_report:'DAILY REPORT',today_activity:"Today's activity",generate_daily:'Generate daily report',attention:'ATTENTION',priority_quotes:'Priority quotations',view_all:'View all',search:'Search',priority:'Priority',sort_by:'Sort by',period_activity:'Quotation activity by period',report_help:'The report counts newly imported quotations, saved Manage reviews, status changes, losses, and PO conversions for the selected period.',daily:'Daily',weekly:'Weekly',monthly:'Monthly',custom:'Custom range',start_date:'Start date',end_date:'End date',scope:'Scope',generate_report:'Generate report',user_admin:'USER ADMINISTRATION',create_user:'Create user',display_name:'Display name',role:'Role',temporary_password:'Temporary password',generate_password:'Generate temporary password',temporary_password_help:'Copy the password before saving. The user will be asked to replace it at the next login.',recent_audit:'Recent audit activity',select_workspace:'SELECT WORKSPACE',choose_system:'Choose a follow-up system',standard_help:'USD quotations imported from the daily Excel report.',special_help:'Special items in JPY with percentile-based priorities.',import_data:'IMPORT DATA',cancel:'Cancel',preview:'Preview',confirm_import:'Confirm import',update_followup:'UPDATE FOLLOW-UP',status:'Status',followup_method:'Follow-up method',loss_reason:'Loss reason',po_date:'PO date',mark_safe:'Mark as Safe',new_comment:'New comment',comment_history:'Comment history',save_review:'Save review',operation_details:'OPERATION DETAILS',audit_history:'Activity history',edit_user:'Edit user',active:'Active',reset_password:'Reset password',save:'Save',all_agents:'All agents',pending:'Pending',view:'View',manage:'Manage',restore:'Restore',added_today:'Added today',po_today:'PO today',overdue:'Overdue follow-ups',po_date_missing:'PO date missing',quotations:'quotations',quoted_total:'Quoted total',po_total:'PO total',grand_total:'Pending + PO total',backup_ok:'Backup verified',backup_due:'Backup overdue or missing',no_records:'No quotations match this view.',read_only:'Read-only historical data',import_complete:'Import completed',all_team:'All team',my_activity:'My activity',new:'New',updated:'Updated',unchanged:'Unchanged',duplicates:'Duplicates',invalid:'Invalid',excluded:'Archived / hidden',rows:'Rows',details:'Details',end_user:'End User',company:'Distributor',net_total:'Net internal total',order:'Customer order',method:'Method',last_review:'Last review',days:'days',rank:'Rank',model:'Model',quantity:'Quantity',unit_price:'Unit price',reason:'Loss reason',date:'Date',reference:'Quotation',nt_agent:'NT Tool agent',dist_agent:'Distributor agent',no_comments:'No comments have been saved.',no_activity:'No activity has been recorded.',reviewed:'Reviewed',status_changes:'Status changes',converted_po:'Converted to PO',lost_quotes:'Lost quotations',financial_summary:'Financial summary',loss_breakdown:'Loss reasons',po_comparison:'QT versus PO',signin:'Sign in',initial_setup:'Initial setup: choose takujiyamada or ignacioillescas and create the first password.',password:'Password',username:'Username',po_invoices:'PO invoices',po_invoices_help:'Add every invoice that forms this PO. The total and PO date are calculated automatically.',add_invoice:'+ Add invoice',invoice_date:'Invoice date',invoice_series:'Series / folio',invoice_number:'Invoice number / code',invoice_amount:'Invoice amount',remove:'Remove',invoices:'Invoices',hide_navigation:'Hide navigation',show_navigation:'Show navigation',management:'Management',period:'Period',all_history:'All history',today:'Today',current_month:'Current month',fiscal_year:'Fiscal year',all:'All',distributor_code:'Distributor code',quote_age:'Days open',last_activity:'Last activity',initial_import:'Initial import',stale_question:'This quotation is more than 90 days old. Was it lost?',color_legend:'Row colors',no_code:'No code',upload_invoices:'Upload invoices',invoice_import_help:'Invoices are matched through Texto Extra 2 only to quotations in PO Date Missing.'},
-  es:{sales_followup:'Seguimiento de ventas',dashboard:'Resumen',priorities:'Prioridades SABC',managed:'Gestionadas',safe:'Seguras',po_missing:'PO sin fecha',lost:'Perdidas',archive:'Archivo',historical:'Históricas',reports:'Reportes',users:'Usuarios',quotation_management:'GESTIÓN DE COTIZACIONES',agent:'Agente NT Tool',language:'Idioma',upload_excel:'Subir Excel',logout:'Cerrar sesión',change_password:'Cambiar contraseña',current_password:'Contraseña actual',new_password:'Nueva contraseña',pending_total:'Total de cotizaciones pendientes',in_followup:'EN SEGUIMIENTO',priority_distribution:'Distribución por prioridad',daily_report:'REPORTE DIARIO',today_activity:'Actividad de hoy',generate_daily:'Generar reporte diario',attention:'ATENCIÓN',priority_quotes:'Cotizaciones prioritarias',view_all:'Ver todas',search:'Buscar',priority:'Prioridad',sort_by:'Ordenar por',period_activity:'Actividad de cotizaciones por periodo',report_help:'El reporte cuenta cotizaciones nuevas importadas, revisiones guardadas en Manage, cambios de estado, pérdidas y conversiones a PO del periodo seleccionado.',daily:'Diario',weekly:'Semanal',monthly:'Mensual',custom:'Rango personalizado',start_date:'Fecha inicial',end_date:'Fecha final',scope:'Alcance',generate_report:'Generar reporte',user_admin:'ADMINISTRACIÓN DE USUARIOS',create_user:'Crear usuario',display_name:'Nombre visible',role:'Rol',temporary_password:'Contraseña temporal',generate_password:'Generar contraseña temporal',temporary_password_help:'Copia la contraseña antes de guardar. El usuario deberá reemplazarla al iniciar sesión.',recent_audit:'Actividad reciente de auditoría',select_workspace:'SELECCIONAR ESPACIO',choose_system:'Elige un sistema de seguimiento',standard_help:'Cotizaciones en USD importadas desde el Excel diario.',special_help:'Artículos especiales en JPY con prioridades por percentiles.',import_data:'IMPORTAR DATOS',cancel:'Cancelar',preview:'Vista previa',confirm_import:'Confirmar importación',update_followup:'ACTUALIZAR SEGUIMIENTO',status:'Estado',followup_method:'Método de seguimiento',loss_reason:'Motivo de pérdida',po_date:'Fecha de PO',mark_safe:'Marcar como segura',new_comment:'Nuevo comentario',comment_history:'Historial de comentarios',save_review:'Guardar revisión',operation_details:'DETALLES DE LA OPERACIÓN',audit_history:'Historial de actividad',edit_user:'Editar usuario',active:'Activo',reset_password:'Restablecer contraseña',save:'Guardar',all_agents:'Todos los agentes',pending:'Pendiente',view:'Ver',manage:'Gestionar',restore:'Restaurar',added_today:'Agregadas hoy',po_today:'PO de hoy',overdue:'Seguimientos vencidos',po_date_missing:'PO sin fecha',quotations:'cotizaciones',quoted_total:'Total cotizado',po_total:'Total de PO',grand_total:'Total pendiente + PO',backup_ok:'Respaldo verificado',backup_due:'Respaldo vencido o inexistente',no_records:'No hay cotizaciones en esta vista.',read_only:'Datos históricos de solo lectura',import_complete:'Importación completada',all_team:'Todo el equipo',my_activity:'Mi actividad',new:'Nuevas',updated:'Actualizadas',unchanged:'Sin cambios',duplicates:'Duplicadas',invalid:'Inválidas',excluded:'Archivadas / ocultas',rows:'Filas',details:'Detalles',end_user:'Usuario final',company:'Distribuidor',net_total:'Total neto interno',order:'Orden del cliente',method:'Método',last_review:'Última revisión',days:'días',rank:'Rango',model:'Modelo',quantity:'Cantidad',unit_price:'Precio unitario',reason:'Motivo de pérdida',date:'Fecha',reference:'Cotización',nt_agent:'Agente NT Tool',dist_agent:'Agente distribuidor',no_comments:'No se han guardado comentarios.',no_activity:'No se ha registrado actividad.',reviewed:'Revisadas',status_changes:'Cambios de estado',converted_po:'Convertidas a PO',lost_quotes:'Cotizaciones perdidas',financial_summary:'Resumen financiero',loss_breakdown:'Motivos de pérdida',po_comparison:'Comparación QT contra PO',signin:'Entrar',initial_setup:'Configuración inicial: selecciona takujiyamada o ignacioillescas y crea la primera contraseña.',password:'Contraseña',username:'Usuario',po_invoices:'Facturas de la PO',po_invoices_help:'Agrega todas las facturas que componen esta PO. El total y la fecha de PO se calculan automáticamente.',add_invoice:'+ Agregar factura',invoice_date:'Fecha de factura',invoice_series:'Serie / folio',invoice_number:'Número / código de factura',invoice_amount:'Importe de factura',remove:'Eliminar',invoices:'Facturas',hide_navigation:'Ocultar navegación',show_navigation:'Mostrar navegación',management:'Gerencia',period:'Periodo',all_history:'Todo el historial',today:'Hoy',current_month:'Mes actual',fiscal_year:'Año fiscal',all:'Todos',distributor_code:'Código distribuidor',quote_age:'Días abierta',last_activity:'Última actividad',initial_import:'Alta inicial',stale_question:'Esta cotización tiene más de 90 días. ¿Se perdió?',color_legend:'Colores de seguimiento',no_code:'Sin código',upload_invoices:'Subir facturas',invoice_import_help:'Las facturas se relacionan mediante Texto Extra 2 únicamente con cotizaciones de PO sin fecha.'},
+  en:{sales_followup:'Sales follow-up',dashboard:'Dashboard',priorities:'SABC Priorities',managed:'Managed',safe:'Safe',po_missing:'PO Date Missing',lost:'Lost',archive:'Archive',historical:'Historical',reports:'Reports',users:'Users',quotation_management:'QUOTATION MANAGEMENT',agent:'NT Tool agent',language:'Language',upload_excel:'Upload Excel',logout:'Log out',change_password:'Change password',current_password:'Current password',new_password:'New password',pending_total:'Pending quotation total',in_followup:'IN FOLLOW-UP',priority_distribution:'Priority distribution',daily_report:'DAILY REPORT',today_activity:"Today's activity",generate_daily:'Generate daily report',attention:'ATTENTION',priority_quotes:'Priority quotations',view_all:'View all',search:'Search',priority:'Priority',sort_by:'Sort by',period_activity:'Quotation activity by period',report_help:'The report counts newly imported quotations, saved Manage reviews, status changes, losses, and PO conversions for the selected period.',daily:'Daily',weekly:'Weekly',monthly:'Monthly',custom:'Custom range',start_date:'Start date',end_date:'End date',scope:'Scope',generate_report:'Generate report',user_admin:'USER ADMINISTRATION',create_user:'Create user',display_name:'Display name',role:'Role',temporary_password:'Temporary password',generate_password:'Generate temporary password',temporary_password_help:'Copy the password before saving. The user will be asked to replace it at the next login.',recent_audit:'Recent audit activity',select_workspace:'SELECT WORKSPACE',choose_system:'Choose a follow-up system',standard_help:'USD quotations imported from the daily Excel report.',special_help:'Special items in JPY with percentile-based priorities.',import_data:'IMPORT DATA',cancel:'Cancel',preview:'Preview',confirm_import:'Confirm import',update_followup:'UPDATE FOLLOW-UP',status:'Status',followup_method:'Follow-up method',loss_reason:'Loss reason',po_date:'PO date',mark_safe:'Mark as Safe',new_comment:'New comment',comment_history:'Comment history',save_review:'Save review',operation_details:'OPERATION DETAILS',audit_history:'Activity history',edit_user:'Edit user',active:'Active',reset_password:'Reset password',save:'Save',all_agents:'All agents',pending:'Pending',view:'View',manage:'Manage',restore:'Restore',added_today:'Added today',po_today:'PO today',overdue:'Overdue follow-ups',po_date_missing:'PO date missing',quotations:'quotations',quoted_total:'Quoted total',po_total:'PO total',grand_total:'Pending + PO total',backup_ok:'Backup verified',backup_due:'Backup overdue or missing',no_records:'No quotations match this view.',read_only:'Read-only historical data',import_complete:'Import completed',all_team:'All team',my_activity:'My activity',new:'New',updated:'Updated',unchanged:'Unchanged',duplicates:'Duplicates',invalid:'Invalid',excluded:'Archived / hidden',rows:'Rows',details:'Details',end_user:'End User',company:'Distributor',net_total:'Net internal total',order:'Customer order',method:'Method',last_review:'Last review',days:'days',rank:'Rank',model:'Model',quantity:'Quantity',unit_price:'Unit price',reason:'Loss reason',date:'Date',reference:'Quotation',nt_agent:'NT Tool agent',dist_agent:'Distributor agent',no_comments:'No comments have been saved.',no_activity:'No activity has been recorded.',reviewed:'Reviewed',status_changes:'Status changes',converted_po:'Converted to PO',lost_quotes:'Lost quotations',financial_summary:'Financial summary',loss_breakdown:'Loss reasons',po_comparison:'QT versus PO',signin:'Sign in',initial_setup:'Initial setup: choose takujiyamada or ignacioillescas and create the first password.',password:'Password',username:'Username',po_invoices:'PO invoices',po_invoices_help:'Add every invoice that forms this PO. The total and PO date are calculated automatically.',add_invoice:'+ Add invoice',invoice_date:'Invoice date',invoice_series:'Series / folio',invoice_number:'Invoice number / code',invoice_amount:'Invoice amount',remove:'Remove',invoices:'Invoices',hide_navigation:'Hide navigation',show_navigation:'Show navigation',management:'Management',period:'Period',all_history:'All history',today:'Today',current_month:'Current month',fiscal_year:'Fiscal year',all:'All',distributor_code:'Distributor code',quote_age:'Days open',last_activity:'Last activity',initial_import:'Initial import',stale_question:'This quotation has a high probability of being lost because it is more than 60 days old. Review its status during this follow-up.',color_legend:'Row colors',no_code:'No code',clear_filters:'Clear filters',upload_invoices:'Upload invoices',invoice_import_help:'Invoices are matched through Texto Extra 2 only to quotations in PO Date Missing.'},
+  es:{sales_followup:'Seguimiento de ventas',dashboard:'Resumen',priorities:'Prioridades SABC',managed:'Gestionadas',safe:'Seguras',po_missing:'PO sin fecha',lost:'Perdidas',archive:'Archivo',historical:'Históricas',reports:'Reportes',users:'Usuarios',quotation_management:'GESTIÓN DE COTIZACIONES',agent:'Agente NT Tool',language:'Idioma',upload_excel:'Subir Excel',logout:'Cerrar sesión',change_password:'Cambiar contraseña',current_password:'Contraseña actual',new_password:'Nueva contraseña',pending_total:'Total de cotizaciones pendientes',in_followup:'EN SEGUIMIENTO',priority_distribution:'Distribución por prioridad',daily_report:'REPORTE DIARIO',today_activity:'Actividad de hoy',generate_daily:'Generar reporte diario',attention:'ATENCIÓN',priority_quotes:'Cotizaciones prioritarias',view_all:'Ver todas',search:'Buscar',priority:'Prioridad',sort_by:'Ordenar por',period_activity:'Actividad de cotizaciones por periodo',report_help:'El reporte cuenta cotizaciones nuevas importadas, revisiones guardadas en Manage, cambios de estado, pérdidas y conversiones a PO del periodo seleccionado.',daily:'Diario',weekly:'Semanal',monthly:'Mensual',custom:'Rango personalizado',start_date:'Fecha inicial',end_date:'Fecha final',scope:'Alcance',generate_report:'Generar reporte',user_admin:'ADMINISTRACIÓN DE USUARIOS',create_user:'Crear usuario',display_name:'Nombre visible',role:'Rol',temporary_password:'Contraseña temporal',generate_password:'Generar contraseña temporal',temporary_password_help:'Copia la contraseña antes de guardar. El usuario deberá reemplazarla al iniciar sesión.',recent_audit:'Actividad reciente de auditoría',select_workspace:'SELECCIONAR ESPACIO',choose_system:'Elige un sistema de seguimiento',standard_help:'Cotizaciones en USD importadas desde el Excel diario.',special_help:'Artículos especiales en JPY con prioridades por percentiles.',import_data:'IMPORTAR DATOS',cancel:'Cancelar',preview:'Vista previa',confirm_import:'Confirmar importación',update_followup:'ACTUALIZAR SEGUIMIENTO',status:'Estado',followup_method:'Método de seguimiento',loss_reason:'Motivo de pérdida',po_date:'Fecha de PO',mark_safe:'Marcar como segura',new_comment:'Nuevo comentario',comment_history:'Historial de comentarios',save_review:'Guardar revisión',operation_details:'DETALLES DE LA OPERACIÓN',audit_history:'Historial de actividad',edit_user:'Editar usuario',active:'Activo',reset_password:'Restablecer contraseña',save:'Guardar',all_agents:'Todos los agentes',pending:'Pendiente',view:'Ver',manage:'Gestionar',restore:'Restaurar',added_today:'Agregadas hoy',po_today:'PO de hoy',overdue:'Seguimientos vencidos',po_date_missing:'PO sin fecha',quotations:'cotizaciones',quoted_total:'Total cotizado',po_total:'Total de PO',grand_total:'Total pendiente + PO',backup_ok:'Respaldo verificado',backup_due:'Respaldo vencido o inexistente',no_records:'No hay cotizaciones en esta vista.',read_only:'Datos históricos de solo lectura',import_complete:'Importación completada',all_team:'Todo el equipo',my_activity:'Mi actividad',new:'Nuevas',updated:'Actualizadas',unchanged:'Sin cambios',duplicates:'Duplicadas',invalid:'Inválidas',excluded:'Archivadas / ocultas',rows:'Filas',details:'Detalles',end_user:'Usuario final',company:'Distribuidor',net_total:'Total neto interno',order:'Orden del cliente',method:'Método',last_review:'Última revisión',days:'días',rank:'Rango',model:'Modelo',quantity:'Cantidad',unit_price:'Precio unitario',reason:'Motivo de pérdida',date:'Fecha',reference:'Cotización',nt_agent:'Agente NT Tool',dist_agent:'Agente distribuidor',no_comments:'No se han guardado comentarios.',no_activity:'No se ha registrado actividad.',reviewed:'Revisadas',status_changes:'Cambios de estado',converted_po:'Convertidas a PO',lost_quotes:'Cotizaciones perdidas',financial_summary:'Resumen financiero',loss_breakdown:'Motivos de pérdida',po_comparison:'Comparación QT contra PO',signin:'Entrar',initial_setup:'Configuración inicial: selecciona takujiyamada o ignacioillescas y crea la primera contraseña.',password:'Contraseña',username:'Usuario',po_invoices:'Facturas de la PO',po_invoices_help:'Agrega todas las facturas que componen esta PO. El total y la fecha de PO se calculan automáticamente.',add_invoice:'+ Agregar factura',invoice_date:'Fecha de factura',invoice_series:'Serie / folio',invoice_number:'Número / código de factura',invoice_amount:'Importe de factura',remove:'Eliminar',invoices:'Facturas',hide_navigation:'Ocultar navegación',show_navigation:'Mostrar navegación',management:'Gerencia',period:'Periodo',all_history:'Todo el historial',today:'Hoy',current_month:'Mes actual',fiscal_year:'Año fiscal',all:'Todos',distributor_code:'Código distribuidor',quote_age:'Días abierta',last_activity:'Última actividad',initial_import:'Alta inicial',stale_question:'Esta cotización tiene alta probabilidad de pérdida porque tiene más de 60 días. Revisa su estado durante este seguimiento.',color_legend:'Colores de seguimiento',no_code:'Sin código',clear_filters:'Limpiar filtros',upload_invoices:'Subir facturas',invoice_import_help:'Las facturas se relacionan mediante Texto Extra 2 únicamente con cotizaciones de PO sin fecha.'},
   ja: {sales_followup:'営業フォローアップ',dashboard:'ダッシュボード',priorities:'優先度 SABC',managed:'対応済み',safe:'安全 (Safe)',po_missing:'PO 日付なし',lost:'失注 (Lost)',archive:'アーカイブ',historical:'履歴データ',reports:'レポート',users:'ユーザー',quotation_management:'見積管理',agent:'NT担当者',language:'言語',upload_excel:'Excelアップロード',logout:'ログアウト',change_password:'パスワード変更',current_password:'現在のパスワード',new_password:'新しいパスワード',pending_total:'保留中の見積合計',in_followup:'フォローアップ中',priority_distribution:'優先度分布',daily_report:'日報',today_activity:'今日の活動',generate_daily:'日報を作成',attention:'要注意',priority_quotes:'優先見積',view_all:'すべて表示',search:'検索',priority:'優先度',sort_by:'並べ替え',period_activity:'期間別の見積活動',report_help:'選択した期間の新規見積、保存されたレビュー、ステータス変更、失注、PO変換をカウントします。',daily:'日次',weekly:'週次',monthly:'月次',custom:'カスタム範囲',start_date:'開始日',end_date:'終了日',scope:'範囲',generate_report:'レポート作成',user_admin:'ユーザー管理',create_user:'ユーザー作成',display_name:'表示名',role:'役割',temporary_password:'一時パスワード',generate_password:'一時パスワード生成',temporary_password_help:'保存する前にパスワードをコピーしてください。',recent_audit:'最近の監査活動',select_workspace:'ワークスペース選択',choose_system:'システムを選択',standard_help:'日次ExcelからインポートされたUSD見積。',special_help:'パーセンタイルベースの優先度を持つJPYの特別アイテム。',import_data:'データインポート',cancel:'キャンセル',preview:'プレビュー',confirm_import:'インポート確認',update_followup:'フォローアップ更新',status:'ステータス',followup_method:'フォローアップ方法',loss_reason:'失注理由',po_date:'PO日付',mark_safe:'安全(Safe)にマーク',new_comment:'新規コメント',comment_history:'コメント履歴',save_review:'レビューを保存',operation_details:'操作詳細',audit_history:'活動履歴',edit_user:'ユーザー編集',active:'有効',reset_password:'パスワードリセット',save:'保存',all_agents:'すべての担当者',pending:'保留中',view:'表示',manage:'管理',restore:'復元',added_today:'本日追加',po_today:'本日のPO',overdue:'期限切れのフォローアップ',po_date_missing:'PO日付なし',quotations:'件',quoted_total:'見積合計',po_total:'PO合計',grand_total:'保留中 + PO合計',backup_ok:'バックアップ確認済み',backup_due:'バックアップ期限切れ',no_records:'データがありません。',read_only:'読み取り専用の履歴データ',import_complete:'インポート完了',all_team:'全チーム',my_activity:'自分の活動',new:'新規',updated:'更新済み',unchanged:'変更なし',duplicates:'重複',invalid:'無効',excluded:'除外 / 非表示',rows:'行',details:'詳細',end_user:'エンドユーザー',company:'代理店',net_total:'社内純合計',order:'顧客注文',method:'方法',last_review:'最終レビュー',days:'日',rank:'ランク',model:'モデル',quantity:'数量',unit_price:'単価',reason:'失注理由',date:'日付',reference:'見積番号',nt_agent:'NT担当者',dist_agent:'代理店担当者',no_comments:'コメントはありません。',no_activity:'活動記録はありません。',reviewed:'レビュー済み',status_changes:'ステータス変更',converted_po:'PO変換',lost_quotes:'失注見積',financial_summary:'財務概要',loss_breakdown:'失注理由の内訳',po_comparison:'見積 vs PO',signin:'サインイン',initial_setup:'初期設定',password:'パスワード',username:'ユーザー名',po_invoices:'POの請求書',po_invoices_help:'このPOの請求書を追加します。合計と日付は自動計算されます。',add_invoice:'+ 請求書追加',invoice_date:'請求日',invoice_series:'シリーズ / フォリオ',invoice_number:'請求書番号 / コード',invoice_amount:'請求額',remove:'削除',invoices:'請求書',hide_navigation:'ナビゲーション非表示',show_navigation:'ナビゲーション表示',management:'管理 (Management)',period:'期間',all_history:'全履歴',today:'今日',current_month:'今月',fiscal_year:'会計年度',all:'すべて',distributor_code:'代理店コード',quote_age:'経過日数',last_activity:'最終活動',initial_import:'初回インポート',stale_question:'この見積は90日以上経過しています。失注しましたか？',color_legend:'行の色の凡例',no_code:'コードなし'}
 };
 const t=k=>I18N[state.language]?.[k]||I18N.en[k]||k;
 const currency=()=>state.system==='special'?'JPY':'USD';
 const money=v=>new Intl.NumberFormat(state.language==='es'?'es-MX':'en-US',{style:'currency',currency:currency(),maximumFractionDigits:currency()==='JPY'?0:2}).format(Number(v||0));
 const fmtDate=v=>v?new Intl.DateTimeFormat(state.language==='es'?'es-MX':'en-US',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(`${v}T12:00:00`)):'—';
-const fmtDT=v=>v?new Date(v).toLocaleString(state.language==='es'?'es-MX':'en-US'):'—';
+const fmtDT=v=>v?new Intl.DateTimeFormat(state.language==='es'?'es-MX':'en-US',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'America/Mexico_City'}).format(new Date(v)):'—';
 const prefix=()=>state.system==='special'?'/api/special':'/api';
 const isoLocal=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const businessToday=()=>new Date(`${state.calendar?.today||isoLocal(new Date())}T12:00:00`);
 
 function dashboardRange(){
   const kind=$('#dashboard-period').value;
-  const today=new Date();
+  const today=businessToday();
   let start='';let end='';
-  if(kind==='today')start=end=isoLocal(today);
-  if(kind==='month'){start=isoLocal(new Date(today.getFullYear(),today.getMonth(),1));end=isoLocal(today);}
-  if(kind==='fiscal'){
-    const fiscalYear=today.getMonth()<3?today.getFullYear()-1:today.getFullYear();
-    start=isoLocal(new Date(fiscalYear,3,1));end=isoLocal(today);
-  }
+  if(kind==='today')start=end=state.calendar?.today||isoLocal(today);
+  if(kind==='month'){start=state.calendar?.month_start||isoLocal(new Date(today.getFullYear(),today.getMonth(),1));end=state.calendar?.today||isoLocal(today);}
+  if(kind==='fiscal'){start=state.calendar?.fiscal_start||isoLocal(new Date(today.getFullYear(),3,1));end=state.calendar?.today||isoLocal(today);}
   if(kind==='custom'){start=$('#dashboard-start').value;end=$('#dashboard-end').value;}
   if(start&&end&&end<start)throw new Error(state.language==='es'?'La fecha final no puede ser anterior a la inicial.':'End date cannot be before start date.');
   return {kind,start,end};
@@ -141,6 +139,7 @@ function setupSecretAdminToggle() {
 async function enterApp(user){
   state.me=user;
   state.language=$('#login-language').value||user.language||'en';
+  state.calendar=await api('/api/calendar');
   applyLanguage();
   $('#user-name').textContent=user.display_name;
   $('#app').classList.remove('hidden');
@@ -163,22 +162,6 @@ async function enterApp(user){
   }
 }
 
-// --- REEMPLAZO: Ajustamos selectSystem para que no pelee con tu botón ---
-async function selectSystem(system){
-  state.system=system;
-  $('#system-dialog').close();
-  $('#system-button').textContent=system==='special'?'Special Quotations (JPY)':'Follow Up Quotations (USD)';
-  $$('.special-only').forEach(e=>e.classList.toggle('hidden',system!=='special'));
-  $$('.standard-only').forEach(e=>e.classList.toggle('hidden',system==='special'));
-  if(!state.me?.can_edit)$$('.invoice-import-only').forEach(e=>e.classList.add('hidden'));
-
-  $$('.regular-nav').forEach(e=>e.classList.toggle('hidden',!!state.me?.management_profile));
-  $$('.manager-only').forEach(e=>e.classList.toggle('hidden',!state.me?.management_profile));
-  
-  renderLegend();
-  await Promise.all([loadAgents(),loadRanks()]);
-  await navigate(state.me?.management_profile?'management':'dashboard');
-}
 $('#login-language').addEventListener('change',()=>{state.language=$('#login-language').value;applyLanguage();if($('#login-dialog').open)showLogin(state.bootstrap);});
 $('#login-form').addEventListener('submit',async e=>{e.preventDefault();$('#login-error').textContent='';try{const endpoint=state.bootstrap?'/api/auth/bootstrap':'/api/auth/login';const result=await api(endpoint,{method:'POST',body:JSON.stringify({username:$('#login-username').value,password:$('#login-password').value,language:$('#login-language').value})});await enterApp(result.user);}catch(err){$('#login-error').textContent=err.message;}});
 $('#logout-button').addEventListener('click',async()=>{try{await api('/api/auth/logout',{method:'POST'});}catch(_){}state.me=null;state.system=null;showLogin(false);});
@@ -192,8 +175,8 @@ async function selectSystem(system){
   $$('.standard-only').forEach(e=>e.classList.toggle('hidden',system==='special'));
   if(!state.me?.can_edit)$$('.invoice-import-only').forEach(e=>e.classList.add('hidden'));
 
-  //LINEA NUEVA: Ocultar vistas no permitidas para el perfil directivo
-  if(state.me?.management_profile)$$('.regular-nav').forEach(e=>e.classList.add('hidden'));
+  $$('.regular-nav').forEach(e=>e.classList.toggle('hidden',!!state.me?.management_profile));
+  $$('.manager-only').forEach(e=>e.classList.toggle('hidden',!state.me?.management_profile));
   renderLegend();
   await Promise.all([loadAgents(),loadRanks()]);
   await navigate(state.me?.management_profile?'management':'dashboard');
@@ -272,16 +255,22 @@ function configureListControls(){
   const managed=state.view==='managed';
   const management=state.view==='management';
   $('#status-filter-wrap').classList.toggle('hidden',!(managed||management));
-  
-  // --- NUEVO: Inyectar opción "No gestionadas" al menú desplegable de Estatus ---
+  $('#distributor-filter-wrap').classList.toggle('hidden',!management||state.system==='special');
+  $('#end-user-filter-wrap').classList.toggle('hidden',!management);
+  $('#clear-list-filters').classList.toggle('hidden',!(managed||management));
   const statusSelect = $('#status-filter');
-  if (statusSelect && !statusSelect.querySelector('option[value="unmanaged"]')) {
-      const opt = document.createElement('option');
-      opt.value = 'unmanaged';
-      opt.textContent = state.language === 'es' ? 'No gestionadas' : 'Unmanaged';
-      statusSelect.appendChild(opt); 
+  let unmanagedOption=statusSelect?.querySelector('option[value="unmanaged"]');
+  if(management){
+    if(!unmanagedOption){
+      unmanagedOption=document.createElement('option');
+      unmanagedOption.value='unmanaged';
+      statusSelect.appendChild(unmanagedOption);
+    }
+    unmanagedOption.textContent=state.language==='es'?'No gestionadas':state.language==='ja'?'未対応':'Unmanaged';
+  }else if(unmanagedOption){
+    if(statusSelect.value==='unmanaged')statusSelect.value='';
+    unmanagedOption.remove();
   }
-  
   $('#priority-filter-wrap').classList.toggle('hidden',managed);
   $('#rank-filter-wrap').classList.toggle('hidden',managed||state.system!=='special');
   $('#order-filter-wrap').classList.toggle('hidden',managed);
@@ -291,6 +280,8 @@ function configureListControls(){
 function listParams(){
   const managed=state.view==='managed';const management=state.view==='management';
   const p=new URLSearchParams({agent:$('#global-agent').value,search:$('#quote-search').value});
+  if(management&&state.system!=='special'&&$('#distributor-filter').value)p.set('distributor',$('#distributor-filter').value);
+  if(management&&$('#end-user-filter').value)p.set('end_user',$('#end-user-filter').value);
   if(!managed)p.set('priority',$('#priority-filter').value);
   if(state.system==='special'&&!managed)p.set('rank',$('#rank-filter').value);
   p.set('order',managed?'status_activity':$('#quote-order').value);
@@ -360,22 +351,11 @@ async function renderList(){
 function rowActions(q,compact=false){return compact?'':`<div class="row-actions"><button class="manage view-btn" data-id="${q.id}">${t('view')}</button>${(!q.is_historical&&!q.is_archived&&state.me.can_edit)?`<button class="manage manage-btn" data-id="${q.id}">${t('manage')}</button>`:''}${(q.is_archived&&state.me.can_admin_users)?`<button class="manage restore-btn" data-id="${q.id}">${t('restore')}</button>`:''}</div>`;}
 function trackingClass(q){if(q.status==='po')return 'tracking-green';if(q.status==='lost')return 'tracking-purple';const days=Number(q.days_since_activity||0);return days>=15?'tracking-red':days>=9?'tracking-orange':'tracking-white';}
 function ageBadge(q) {
-  let days = Number(q.quote_age_days || 0);
-  
-  // Si es PO, congelar con la fecha de la factura
-  if (q.status === 'po' && q.po_date) {
-    const d1 = new Date(`${q.quote_date.substring(0, 10)}T12:00:00`);
-    const d2 = new Date(`${q.po_date.substring(0, 10)}T12:00:00`);
-    days = Math.max(0, Math.floor((d2 - d1) / 86400000));
-  } 
-  // Si es Lost, congelar con la fecha en que se marcó como perdida
-  else if (q.status === 'lost' && q.status_changed_at) {
-    const d1 = new Date(`${q.quote_date.substring(0, 10)}T12:00:00`);
-    const d2 = new Date(`${q.status_changed_at.substring(0, 10)}T12:00:00`);
-    days = Math.max(0, Math.floor((d2 - d1) / 86400000));
-  }
-  
-  return `<span class="age-badge${days > 90 ? ' stale' : ''}">${days > 90 ? '90+' : days} ${t('days')}</span>`;
+  const days = Number(q.quote_age_days || 0);
+  const risk = q.status === 'pending' && days > 60;
+  const label = days > 90 ? `90+ ${t('days')}` : `${days} ${t('days')}`;
+  const riskText = risk ? (state.language === 'es' ? ' · Riesgo alto' : ' · High loss risk') : '';
+  return `<span class="age-badge${days > 90 ? ' stale' : risk ? ' risk' : ''}">${label}${riskText}</span>`;
 }
 function activityCell(q) {
   let detail = '';
@@ -385,10 +365,7 @@ function activityCell(q) {
     detail = `<span class="initial-badge">FollowUp - ${methodLabel(q.follow_up_type)}</span>`;
   }
   
-  // SOLUCIÓN: Recortar la hora y usar solo los primeros 10 caracteres (YYYY-MM-DD)
-  const dateOnly = q.last_activity_at ? q.last_activity_at.substring(0, 10) : '';
-  
-  return `${fmtDate(dateOnly)}${detail}`;
+  return `${fmtDT(q.last_activity_at)}${detail}`;
 }
 function trackingLegend() {
   const labels = state.language === 'es' 
@@ -474,7 +451,7 @@ function wireRows(){$$('.view-btn').forEach(b=>b.addEventListener('click',()=>op
 async function restoreQuote(id){try{await api(`/api/special/archive/${id}/restore`,{method:'POST'});toast(t('restore'));await renderList();}catch(e){toast(e.message,true);}}
 
 function normalizeQuote(raw){const q={...(raw||{})};for(const key of ['folio','quote_date','receptor','rank','code','description','nt_agent','status','po_date','series','distributor_company','end_user','distributor_agent','customer_order','loss_reason','follow_up_type'])if(q[key]==null)q[key]='';q.comments=Array.isArray(q.comments)?q.comments:[];q.events=Array.isArray(q.events)?q.events:[];q.invoices=Array.isArray(q.invoices)?q.invoices:[];return q;}
-function detailsHtml(raw){const q=normalizeQuote(raw);const pairs=state.system==='special'?[[t('reference'),q.folio||'—'],[t('date'),fmtDate(q.quote_date)],[t('end_user'),q.receptor||'—'],[t('rank'),q.rank||'—'],["Item code",q.code||'—'],[t('model'),q.description||'—'],[t('quantity'),q.quantity??'—'],[`${t('unit_price')} (JPY)`,money(q.unit_price)],[t('nt_agent'),q.nt_agent||'—'],[t('status'),statusLabel(q.status)]]:[[t('reference'),q.folio||'—'],[t('date'),fmtDate(q.quote_date)],["Series",q.series||'—'],[t('company'),q.distributor_company||'—'],[t('end_user'),q.end_user||'—'],[t('dist_agent'),q.distributor_agent||'—'],[t('nt_agent'),q.nt_agent||'—'],[`${t('quoted_total')} (USD)`,money(q.total_usd)],[t('net_total'),q.net_total_usd==null?'—':money(q.net_total_usd)],[t('order'),q.customer_order||'—'],[t('status'),statusLabel(q.status)]];if(q.status==='po')pairs.push([t('po_date'),fmtDate(q.po_date)],[t('po_total'),q.po_total_usd?money(q.po_total_usd):'—']);if(q.status==='lost')pairs.push([t('reason'),q.loss_reason||'—']);return pairs.map(([k,v])=>`<div><span>${esc(k)}</span><strong>${esc(v==null?'—':v)}</strong></div>`).join('');}
+function detailsHtml(raw){const q=normalizeQuote(raw);const pairs=state.system==='special'?[[t('reference'),q.folio||'—'],[t('date'),fmtDate(q.quote_date)],[t('end_user'),q.receptor||'—'],[t('rank'),q.rank||'—'],["Item code",q.code||'—'],[t('model'),q.description||'—'],[t('quantity'),q.quantity??'—'],[`${t('unit_price')} (JPY)`,money(q.unit_price)],[t('nt_agent'),q.nt_agent||'—'],[t('status'),statusLabel(q.status)]]:[[t('reference'),q.folio||'—'],[t('date'),fmtDate(q.quote_date)],["Series",q.series||'—'],[t('company'),q.distributor_company||'—'],[t('distributor_code'),q.distributor_code||t('no_code')],[t('end_user'),q.end_user||'—'],[t('dist_agent'),q.distributor_agent||'—'],[t('nt_agent'),q.nt_agent||'—'],[`${t('quoted_total')} (USD)`,money(q.total_usd)],[t('net_total'),q.net_total_usd==null?'—':money(q.net_total_usd)],[t('order'),q.customer_order||'—'],[t('status'),statusLabel(q.status)]];if(q.status==='po')pairs.push([t('po_date'),fmtDate(q.po_date)],[t('po_total'),q.po_total_usd?money(q.po_total_usd):'—']);if(q.status==='lost')pairs.push([t('reason'),q.loss_reason||'—']);return pairs.map(([k,v])=>`<div><span>${esc(k)}</span><strong>${esc(v==null?'—':v)}</strong></div>`).join('');}
 function commentsHtml(comments){return comments?.length?comments.map(c=>`<div class="history-item"><strong>${esc(c.user_name)}</strong><time>${fmtDT(c.created_at)}</time><p>${esc(c.body)}</p></div>`).join(''):`<p class="muted">${t('no_comments')}</p>`;}
 function invoicesHtml(invoices){return `<table class="invoice-table"><thead><tr><th>${t('invoice_date')}</th><th>${t('invoice_series')}</th><th>${t('invoice_number')}</th><th>${t('invoice_amount')}</th></tr></thead><tbody>${invoices.map(row=>`<tr><td>${fmtDate(row.invoice_date)}</td><td>${esc(row.invoice_series)}</td><td class="folio">${esc(row.invoice_number)}</td><td class="money">${money(row.amount)}</td></tr>`).join('')}</tbody></table>`;}
 async function openView(id){
@@ -524,21 +501,14 @@ async function openManage(id) {
     state.quote = q;
     if (q.read_only) return toast(t('read_only'), true);
 
-    let statusToSet = ['pending', 'po', 'lost'].includes(q.status) ? q.status : 'pending';
-    let lossReasonToSet = q.loss_reason;
-
-    if (statusToSet === 'pending' && Number(q.quote_age_days || 0) > 90) {
-      const isLost = confirm(state.language === 'es'
-        ? 'Esta cotización tiene más de 90 días abierta. ¿Se perdió la operación?'
-        : 'This quotation is more than 90 days old. Was it lost?');
-      if (isLost) {
-        statusToSet = 'lost';
-        lossReasonToSet = 'Stale Quote';
-      }
-    }
+    const statusToSet = ['pending', 'po', 'lost'].includes(q.status) ? q.status : 'pending';
 
     $('#manage-title').textContent = q.folio || '—';
     $('#manage-summary').innerHTML = detailsHtml(q);
+    const staleWarning = $('#stale-warning');
+    const showRisk = statusToSet === 'pending' && Number(q.quote_age_days || 0) > 60;
+    staleWarning.textContent = showRisk ? t('stale_question') : '';
+    staleWarning.classList.toggle('hidden', !showRisk);
     
     $('#manage-status').value = statusToSet;
     $('#manage-method').value = q.follow_up_type;
@@ -570,7 +540,7 @@ async function openManage(id) {
     responseSelect.value = q.client_response || 'pending';
     // --------------------------------------------
 
-    $('#manage-loss').value = lossReasonToSet;
+    $('#manage-loss').value = q.loss_reason;
     $('#manage-safe').checked = !!q.is_safe;
     $('#manage-comment').value = '';
     $('#manage-comments').innerHTML = commentsHtml(q.comments);
@@ -609,15 +579,21 @@ $('#manage-form').addEventListener('submit',async e=>{
   }
 });
 
-let searchTimer;$('#quote-search').addEventListener('input',()=>{clearTimeout(searchTimer);
-  searchTimer=setTimeout(()=>renderList().catch(e=>toast(e.message,true)),250);
-});
+let searchTimer;const delayedListRender=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>renderList().catch(e=>toast(e.message,true)),250);};
+$('#quote-search').addEventListener('input',delayedListRender);
+$('#distributor-filter').addEventListener('input',delayedListRender);
+$('#end-user-filter').addEventListener('input',delayedListRender);
 $('#priority-filter').addEventListener('change',()=>renderList());
 $('#rank-filter').addEventListener('change',()=>renderList());
 $('#quote-order').addEventListener('change',()=>renderList());
 $('#status-filter').addEventListener('change',()=>renderList());
+$('#clear-list-filters').addEventListener('click',()=>{
+  $('#quote-search').value='';$('#status-filter').value='';$('#priority-filter').value='';$('#rank-filter').value='';
+  $('#distributor-filter').value='';$('#end-user-filter').value='';$('#quote-order').value='priority';
+  renderList().catch(e=>toast(e.message,true));
+});
 
-function setPreset(kind){const today=new Date();let start=new Date(today);if(kind==='weekly'){const day=(today.getDay()+6)%7;start.setDate(today.getDate()-day);}if(kind==='monthly')start=new Date(today.getFullYear(),today.getMonth(),1);const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;if(kind!=='custom'){$('#report-start').value=iso(start);$('#report-end').value=iso(today);}} $$('.report-preset').forEach(b=>b.addEventListener('click',async()=>{setPreset(b.dataset.period);if(b.dataset.period!=='custom')await renderReport();}));$('#dashboard-report').addEventListener('click',()=>{setPreset('daily');navigate('reports');});
+function setPreset(kind){const today=businessToday();let start=new Date(today);if(kind==='weekly'){const day=(today.getDay()+6)%7;start.setDate(today.getDate()-day);}if(kind==='monthly')start=new Date(`${state.calendar?.month_start||isoLocal(new Date(today.getFullYear(),today.getMonth(),1))}T12:00:00`);const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;if(kind!=='custom'){$('#report-start').value=iso(start);$('#report-end').value=iso(today);}} $$('.report-preset').forEach(b=>b.addEventListener('click',async()=>{setPreset(b.dataset.period);if(b.dataset.period!=='custom')await renderReport();}));$('#dashboard-report').addEventListener('click',()=>{setPreset('daily');navigate('reports');});
 function reportQuery(){return new URLSearchParams({start:$('#report-start').value,end:$('#report-end').value,scope:$('#report-scope').value,agent:$('#global-agent').value,language:state.language});}
 async function renderReport(){if(!$('#report-start').value)setPreset('daily');const data=await api(`${prefix()}/reports/range?${reportQuery()}`);const metrics=[[data.new_quotes,t('added_today')],[data.quotes_reviewed,t('reviewed')],[data.status_changes,t('status_changes')],[data.po_changes,t('converted_po')]];const financial=[[data.pending_value,t('pending_total')],[data.po_quoted_value,t('quoted_total')],[data.po_value,t('po_total')],[Number(data.po_value)-Number(data.po_quoted_value),'Variance']];const maxPo=Math.max(1,...data.po_rows.flatMap(r=>[Number(r.quoted_total||0),Number(r.po_total||0)]));$('#report-summary').innerHTML=`<h3>${t('details')}</h3><div class="report-kpis">${metrics.map(([v,l])=>`<div><strong>${v}</strong><span>${l}</span></div>`).join('')}</div><h3>${t('financial_summary')}</h3><div class="report-kpis financial">${financial.map(([v,l])=>`<div><strong>${money(v)}</strong><span>${l}</span></div>`).join('')}</div><div class="report-grid"><section><h3>${t('loss_breakdown')}</h3>${Object.keys(data.loss_breakdown).length?Object.entries(data.loss_breakdown).map(([r,v])=>`<div class="reason-row"><span>${esc(r)}</span><b>${v}</b></div>`).join(''):`<p class="muted">${t('no_records')}</p>`}</section><section><h3>${t('po_comparison')}</h3><div class="comparison-chart">${data.po_rows.slice(0,8).map(r=>`<div class="comparison-item"><div><i class="qt" style="height:${Math.max(2,90*Number(r.quoted_total||0)/maxPo)}px"></i><i class="po" style="height:${Math.max(2,90*Number(r.po_total||0)/maxPo)}px"></i></div><small>${esc(r.folio)}</small><span>${fmtDate(r.po_date)}</span></div>`).join('')||`<p class="muted">${t('no_records')}</p>`}</div></section></div>`;const base=`${prefix()}/reports/export`;const q=reportQuery();$('#report-pdf').href=`${base}.pdf?${q}`;$('#report-xlsx').href=`${base}.xlsx?${q}`;}
 $('#report-preview').addEventListener('click',()=>renderReport().catch(e=>toast(e.message,true)));$('#report-scope').addEventListener('change',()=>renderReport().catch(e=>toast(e.message,true)));
@@ -648,7 +624,7 @@ function openUser(id) {
         const htmlSelector = `
         <div id="edit-role-wrapper" style="margin: 15px 0; padding: 10px; background: #f4f6f8; border: 1px solid #cbd5e1; border-radius: 6px;">
             <span style="font-weight: bold; display: block; margin-bottom: 5px; color: #0f172a;">
-                ⚙️ Rol del sistema
+                ⚙️ ${state.language === 'es' ? 'Perfil de visualización' : 'View profile'}
             </span>
             <select id="edit-role" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
                 <option value="0">Developer (Vista Completa)</option>
@@ -704,7 +680,6 @@ $('#user-edit-form').addEventListener('submit', async e => {
         toast(err.message, true);
     }
 });
-$('#user-edit-form').addEventListener('submit',async e=>{e.preventDefault();try{const password=$('#edit-password').value;await api(`/api/users/${$('#edit-user-id').value}`,{method:'PATCH',body:JSON.stringify({display_name:$('#edit-name').value,agent_name:$('#edit-agent').value,active:$('#edit-active').checked,password})});$('#user-edit-dialog').close();toast(password?(state.language==='es'?'Contraseña temporal guardada':'Temporary password saved'):t('save'));await renderUsers();}catch(err){toast(err.message,true);}});
 $('#password-button').addEventListener('click',()=>{$('#password-notice').textContent='';$('#password-form').reset();$('#password-dialog').showModal();});
 $('#password-form').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/me/password',{method:'PATCH',body:JSON.stringify({current_password:$('#current-password').value,new_password:$('#new-own-password').value})});state.me.must_change_password=0;$('#password-dialog').close();toast(t('change_password'));}catch(err){toast(err.message,true);}});  $$('.dialog-close').forEach(b=>b.addEventListener('click',()=>b.closest('dialog').close()));
 

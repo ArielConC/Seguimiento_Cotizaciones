@@ -122,7 +122,8 @@ class Handler(BaseHTTPRequestHandler):
         if scope=="all" and not auth.can_team_reports(user): raise PermissionError("Your role cannot generate team-wide reports")
         actor_id=None if scope=="all" else int(user["id"]); agent=params.get("agent","")
         data=database.report_activity(start,end,actor_id,agent) if workspace=="standard" else special.report_activity(start,end,actor_id,agent)
-        data.update({"scope":scope,"agent":agent,"generated_by":user["display_name"],"language":params.get("language",user.get("language","en"))})
+        data.update({"scope":scope,"agent":agent,"generated_by":user["display_name"],"generated_at":database.now_iso(),
+                     "language":params.get("language",user.get("language","en"))})
         return data
 
     def do_GET(self)->None:  # noqa: N802
@@ -136,6 +137,7 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path=="/api/auth/status": self._json({"bootstrap_required":auth.bootstrap_needed()}); return
             user=self._user()
             if parsed.path=="/api/me": self._json(user)
+            elif parsed.path=="/api/calendar": self._json(database.calendar_periods())
             elif parsed.path=="/api/quotes": self._json(database.list_quotes(params))
             elif parsed.path=="/api/special/quotes": self._json(special.list_quotes(params))
             elif re.fullmatch(r"/api/quotes/\d+",parsed.path): self._json(database.get_quote(int(parsed.path.rsplit("/",1)[1])))
@@ -242,7 +244,7 @@ class Handler(BaseHTTPRequestHandler):
             elif re.fullmatch(r"/api/special/quotes/\d+",parsed.path):
                 quote_id=int(parsed.path.rsplit("/",1)[1]); current=special.get_quote(quote_id)
                 if not auth.can_edit_quote(user,current["nt_agent"]): raise PermissionError("You can only manage quotations assigned to you")
-                result=special.update_quote(quote_id,str(payload.get("status","pending")),str(payload.get("comment","")),str(payload.get("loss_reason","")),str(payload.get("follow_up_type","")),bool(payload.get("is_safe",False)),payload.get("po_total"),str(payload.get("po_date") or "") or None,user,payload.get("invoices"))
+                result=special.update_quote(quote_id,str(payload.get("status","pending")),str(payload.get("comment","")),str(payload.get("loss_reason","")),str(payload.get("follow_up_type","")),bool(payload.get("is_safe",False)),payload.get("po_total"),str(payload.get("po_date") or "") or None,user,payload.get("invoices"),str(payload.get("client_response","pending")))
                 detail=f"status={result['status']}; invoices={len(result.get('invoices',[]))}; po_total={result.get('po_total_usd') or ''}"
                 auth.audit(user,"quote_review_saved","special","quote",str(quote_id),detail=detail,ip=self._client_ip()); self._json(result)
             elif re.fullmatch(r"/api/users/\d+",parsed.path): self._json(auth.update_user(user,int(parsed.path.rsplit("/",1)[1]),payload))

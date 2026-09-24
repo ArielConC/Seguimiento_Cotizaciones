@@ -1,6 +1,112 @@
 # Seguimiento de cambios
 
-Actualizado el 18 de septiembre de 2026. La fase de facturas múltiples quedó implementada, migrada y validada antes de publicar la versión en la nube. Los requisitos siguientes están autorizados para una futura implementación, pero todavía no se han aplicado a la aplicación.
+Actualizado el 24 de septiembre de 2026. La fase de facturas múltiples quedó implementada, migrada y validada. El reporte ejecutivo de una página y la corrección de Gestionadas/No Gestionadas ya se implementaron y validaron localmente; los apartados posteriores continúan como cambios pendientes hasta su implementación o despliegue.
+
+## Cambio implementado: reporte ejecutivo gerencial de una página
+
+**Estado:** implementado y validado localmente en USD y JPY. La lista siguiente se conserva como especificación de aceptación y referencia para la validación posterior al despliegue.
+
+### Objetivo y formato
+
+- [ ] Sustituir el formato actual del reporte gerencial PDF por un resumen ejecutivo de **una sola página**, diseñado para comprender resultados, riesgos y acciones necesarias en menos de un minuto.
+- [ ] Generar el reporte en orientación horizontal y asegurar que el contenido completo permanezca dentro de una sola página, sin cortes, tablas partidas ni elementos ilegibles.
+- [ ] Mantener separados los espacios y monedas: Follow Up Quotations en USD y Special Quotations en JPY, sin conversiones ni mezcla de resultados.
+- [ ] Conservar los periodos Diario, Semanal, Mensual y Rango personalizado, así como el alcance individual o de equipo permitido por el perfil del usuario.
+- [ ] Mostrar en el encabezado: nombre del reporte, periodo incluido, espacio y moneda, agente o equipo seleccionado, usuario que lo generó y fecha/hora de generación en la zona horaria de México.
+- [ ] Mantener el Excel detallado como respaldo operativo cuando corresponda; la restricción de una página se aplicará al reporte ejecutivo PDF.
+
+### Indicadores principales
+
+- [ ] Colocar en la franja superior seis indicadores compactos: **Pending**, **Nuevas**, **Revisadas**, **PO**, **Lost** y **Conversión**.
+- [ ] Mostrar **Pending** como cantidad e importe total activo dentro del periodo seleccionado usando la fecha de cotización, con el importe monetario como dato visual principal.
+- [ ] Mostrar **Nuevas** como cantidad e importe de las cotizaciones incorporadas al sistema durante el periodo.
+- [ ] Mostrar **Revisadas** como número de cotizaciones únicas que tuvieron al menos una revisión guardada mediante Manage durante el periodo. Varias modificaciones de la misma cotización deben contar una sola vez.
+- [ ] Mostrar **PO** como cantidad de conversiones realizadas durante el periodo y suma del valor final de sus PO.
+- [ ] Mostrar **Lost** como cantidad de operaciones movidas a Lost durante el periodo y suma de su valor cotizado perdido.
+- [ ] Calcular la tasa de conversión por cantidad como `PO / (PO + Lost)` para las operaciones resueltas durante el periodo. Si no existen operaciones resueltas, mostrar `N/A` y no cero por ciento.
+- [ ] Permitir consultar en el Excel detallado la tasa de conversión por valor, sin agregar otro indicador que sobrecargue la primera página.
+
+### Distribución central de la página
+
+- [ ] Dividir la zona central en cuatro bloques: **Pipeline por prioridad**, **Resultados del periodo**, **Alertas de seguimiento** y **Pérdidas**.
+- [ ] En Pipeline por prioridad, mostrar cantidad e importe Pending de S, A, B y C mediante barras horizontales, destacando el importe sobre la cantidad.
+- [ ] En Resultados del periodo, mostrar: total originalmente cotizado de las operaciones convertidas, total final de PO, diferencia monetaria, diferencia porcentual y promedio de días entre fecha de cotización y fecha de PO.
+- [ ] Calcular la diferencia QT–PO como `Total final PO - Total originalmente cotizado`; mostrar claramente si el resultado es positivo o negativo.
+- [ ] Calcular el promedio de días QT→PO únicamente con operaciones que tengan ambas fechas válidas. Mostrar `N/A` cuando no exista una base suficiente.
+- [ ] En Alertas de seguimiento, mostrar cantidad e importe para Pending con 9–14 días sin seguimiento, Pending con 15 días o más, cotizaciones con más de 90 días desde su fecha y cantidad de PO sin fecha.
+- [ ] Evitar doble interpretación: una cotización puede formar parte de más de una alerta, por lo que cada categoría se presentará de forma independiente y no se sumará como un total único de alertas.
+- [ ] En Pérdidas, mostrar los principales motivos del periodo con cantidad e importe perdido. Agrupar los motivos menores como **Other/Otros** cuando sea necesario para conservar la legibilidad de la página.
+
+### Tabla de operaciones que requieren acción
+
+- [ ] Reservar la franja inferior para una tabla de máximo **10 cotizaciones** que requieran atención inmediata.
+- [ ] Mostrar únicamente estas columnas: prioridad, número de cotización, código de distribuidor, End User, importe, días sin seguimiento y agente NT Tool.
+- [ ] Ordenar primero las prioridades S y A con 15 días o más sin seguimiento; después las cotizaciones con más de 90 días y finalmente las PO sin fecha.
+- [ ] Dentro del mismo nivel de atención, ordenar primero por importe de mayor a menor y después por mayor número de días sin seguimiento.
+- [ ] No duplicar una cotización que cumpla varias condiciones; asignarla únicamente a su condición de mayor urgencia.
+- [ ] Si existen más de 10 operaciones críticas, indicar el total restante con una leyenda equivalente a `X operaciones adicionales requieren atención`.
+- [ ] Si no existen operaciones críticas, reemplazar la tabla vacía por un mensaje breve que indique que no hay acciones urgentes en el periodo.
+
+### Información excluida de la página ejecutiva
+
+- [ ] No mostrar en el PDF de una página el historial completo de comentarios, todas las fechas individuales de PO, el desglose de facturas ni cada modificación realizada.
+- [ ] No incluir serie, total neto interno, agente distribuidor, respaldos, archivos importados ni información técnica del sistema.
+- [ ] No imprimir la lista completa de cotizaciones normales, PO o pérdidas. Esos datos permanecerán disponibles en la aplicación, View/Details y el Excel detallado.
+- [ ] No usar el número bruto de comentarios o eventos como indicador de productividad; utilizar cotizaciones únicas revisadas.
+- [ ] Evitar gráficas que repitan exactamente los mismos valores de los indicadores superiores.
+
+### Jerarquía visual y conclusión automática
+
+- [ ] Hacer que **Total Pending** sea el dato monetario de mayor tamaño, seguido por el total final convertido a PO y la tasa de conversión.
+- [ ] Usar azul para información general, naranja para atención próxima, rojo para acción inmediata, verde para PO y morado para Lost; acompañar siempre el color con texto o etiqueta para mantener accesibilidad.
+- [ ] Mantener tipografía legible, cantidades con separadores de miles, símbolo de moneda visible y fechas numéricas en el idioma seleccionado.
+- [ ] Agregar al final una conclusión automática de máximo tres líneas que resuma: total Pending, total convertido a PO y número/valor de operaciones prioritarias con 15 días o más sin seguimiento.
+- [ ] Generar la conclusión en inglés o español según el idioma elegido para el reporte, sin cambiar el idioma general de la aplicación.
+
+### Validación del nuevo reporte
+
+- [ ] Probar el diseño con datos abundantes, importes grandes, nombres largos, cero pérdidas, cero conversiones y más de 10 operaciones críticas.
+- [ ] Verificar que el reporte permanezca en una sola página PDF tanto en USD como en JPY.
+- [ ] Conciliar todos los indicadores contra las consultas de detalle para evitar diferencias entre Dashboard, Gerencia, PDF y Excel.
+- [ ] Probar los límites de 9, 14, 15, 90 y 91 días, así como cotizaciones que pertenezcan simultáneamente a varias alertas.
+- [ ] Verificar los alcances **My activity** y **All team**, respetando permisos y atribución por usuario.
+
+## Corrección implementada: visibilidad y filtros de Special Quotations en JPY
+
+**Estado:** causa corregida y cubierta por pruebas automatizadas para Gestionadas y No Gestionadas en ambos espacios. Falta únicamente la comprobación posterior al despliegue con la base de datos activa de Railway.
+
+### Problemas observados
+
+- [ ] Reproducir y documentar el problema de la vista **Manager** en Special Quotations: al seleccionar o cambiar a **No Gestionada**, desaparecen todas las cotizaciones en lugar de mostrarse las que corresponden a esa condición.
+- [ ] Reproducir y documentar el problema de la vista **Developer > Gestionadas**, donde solamente aparecen tres cotizaciones aunque existen muchas más que ya fueron gestionadas.
+- [ ] Confirmar si el fallo depende del perfil, del idioma, del espacio JPY, de la sesión, del estado seleccionado, del usuario que hizo la gestión o de una combinación de filtros persistentes.
+
+### Revisión integral de la causa
+
+- [ ] Revisar de extremo a extremo el flujo de Special Quotations: registros almacenados, historial de gestión, consultas de base de datos, API, permisos por perfil, traducción de estados y filtros aplicados en el navegador.
+- [ ] Verificar que **No Gestionada** tenga una definición interna única y que sus valores o alias en español e inglés coincidan entre la base de datos, el servidor y la interfaz.
+- [ ] Verificar que una cotización se considere **Gestionada** cuando tenga al menos una revisión guardada mediante Manage, independientemente de que su estado actual sea Pending, Safe, PO o Lost.
+- [ ] Revisar que la consulta de Gestionadas no esté limitada por error al usuario conectado, a un agente, a tres resultados, a una página incompleta, a un estado concreto o al último archivo importado.
+- [ ] Revisar paginación, límites, ordenamiento y filtros conservados en la sesión para asegurar que ningún registro válido quede oculto sin que el usuario lo solicite.
+- [ ] Comprobar que los permisos de Manager y Developer determinen únicamente el alcance autorizado y no cambien de manera accidental la definición de Gestionada/No Gestionada.
+- [ ] Comparar los conteos de la interfaz con consultas directas a la base de datos para identificar exactamente en qué capa se pierden los registros.
+
+### Comportamiento esperado
+
+- [ ] Al elegir **No Gestionada**, mostrar todas las Special Quotations JPY que nunca hayan tenido una revisión guardada, respetando solamente los filtros visibles seleccionados por el usuario.
+- [ ] Al entrar en **Gestionadas**, mostrar todas las Special Quotations JPY que tengan por lo menos una revisión guardada y que estén dentro del alcance autorizado del perfil.
+- [ ] Cambiar entre Gestionadas y No Gestionadas no debe modificar, eliminar, archivar ni cambiar el estado de ninguna cotización; debe ser únicamente una operación de visualización y filtrado.
+- [ ] Mostrar el total correcto de resultados y, si existe paginación, permitir recorrer todas las páginas conservando el orden seleccionado.
+- [ ] Evitar que un filtro anterior invisible siga afectando la lista; todos los filtros activos deben mostrarse y debe existir una acción para limpiarlos.
+- [ ] Mantener el historial, comentarios, autoría, prioridad y estado de cada cotización durante la corrección.
+
+### Validación y prevención de regresiones
+
+- [ ] Crear pruebas automatizadas con cotizaciones JPY gestionadas y no gestionadas por distintos usuarios y con estados Pending, Safe, PO y Lost.
+- [ ] Probar las vistas con los perfiles Manager y Developer, en español e inglés, sin filtros y con cada filtro disponible.
+- [ ] Verificar escenarios con más registros que el tamaño de una página y confirmar que el total, la paginación y la suma monetaria coincidan con la base de datos.
+- [ ] Confirmar que la corrección no altere Follow Up Quotations en USD ni las vistas Gerencia, PO, Lost, Safe, PO Date Missing, Archive o Historical.
+- [ ] Antes de publicar, registrar la causa raíz encontrada y validar manualmente con una copia de los datos actuales que ya no desaparezcan registros ni se muestren conteos parciales.
 
 ## Cambios pendientes autorizados: periodos, vista Gerencia y seguimiento visual
 
@@ -70,9 +176,9 @@ Actualizado el 18 de septiembre de 2026. La fase de facturas múltiples quedó i
 
 - [ ] Mantener separado el contador **Días desde la cotización** del contador **Días sin seguimiento**. El primero parte de la fecha de cotización; el segundo parte de la última revisión guardada.
 - [ ] Cuando una cotización tenga más de 90 días calendario desde su fecha, destacar la celda del número de días con una etiqueta visible `90+ days` o equivalente, sin reemplazar el color de estado de toda la fila.
-- [ ] Al abrir Manage para una cotización de más de 90 días que todavía esté Pending, mostrar una pregunta explícita para confirmar si la operación se perdió.
-- [ ] Si el usuario responde que sí, preseleccionar estado Lost y el nuevo motivo **Stale Quote**, permitiendo que revise la información antes de guardar.
-- [ ] Si responde que no, permitir continuar con la gestión normal sin cambiar automáticamente el estado.
+- [x] Para cotizaciones Pending con más de 60 días, mostrar dentro de Manage un aviso informativo y no bloqueante de alta probabilidad de pérdida.
+- [x] Eliminar la ventana emergente de confirmación, sin preseleccionar Lost ni modificar automáticamente el estado o el motivo de pérdida.
+- [x] Si una cotización de más de 90 días se gestiona y se guarda todavía como Pending, considerarla revisada normalmente y no volver a interrumpir al usuario con una confirmación de pérdida.
 - [ ] Agregar **Stale Quote** a la lista de motivos de pérdida y mostrarlo en View/Details, listas Lost y reportes igual que los motivos existentes.
 - [ ] No generar una pérdida ni un comentario de pérdida hasta que el usuario guarde Manage.
 
@@ -211,6 +317,6 @@ Los requisitos de las etapas anteriores se encuentran implementados y verificado
 ## Verificación
 
 - [x] Validación de sintaxis de JavaScript y Python.
-- [x] Once pruebas automatizadas aprobadas, incluidas validaciones de configuración segura para Railway.
+- [x] Veinticinco pruebas automatizadas aprobadas, incluidas validaciones de configuración segura para Railway, periodos, vistas gestionadas, respuesta del cliente y alerta pasiva por antigüedad.
 - [x] Validación de lectura contra los dos libros de ejemplo.
 - [x] Prueba HTTP completa de acceso, importación de ambos espacios, gestión y exportación PDF/Excel.

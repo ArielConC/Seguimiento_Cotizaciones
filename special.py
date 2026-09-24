@@ -92,7 +92,7 @@ def initialize() -> None:
             "source_quote_number":"TEXT NOT NULL DEFAULT ''","rank":"TEXT NOT NULL DEFAULT ''","po_date":"TEXT",
             "is_archived":"INTEGER NOT NULL DEFAULT 0","archive_reason":"TEXT NOT NULL DEFAULT ''","import_id":"INTEGER",
             "created_by_user_id":"INTEGER","created_by_name":"TEXT NOT NULL DEFAULT ''","last_reviewed_at":"TEXT",
-            "last_reviewed_by":"INTEGER",
+            "last_reviewed_by":"INTEGER","client_response":"TEXT NOT NULL DEFAULT 'pending'",
         })
         database._ensure_columns(db, "special_quote_events", {
             "user_id":"INTEGER","user_name":"TEXT NOT NULL DEFAULT 'Historical data'",
@@ -103,6 +103,7 @@ def initialize() -> None:
             WHERE trim(q.comment)<>'' AND NOT EXISTS(
                 SELECT 1 FROM special_quote_comments c WHERE c.quote_id=q.id AND c.is_legacy=1)"""
         )
+        database.backfill_review_metadata(db,"special_quotes","special_quote_events","special_quote_comments")
         _reconcile_duplicates(db)
         po_invoices.migrate_legacy(db,"special_quotes","special_quote_invoices","special_quote_events","JPY")
 
@@ -387,6 +388,7 @@ def list_quotes(filters: dict[str,str]) -> list[dict[str,Any]]:
     if filters.get("agent"): clauses.append("q.nt_agent=?"); values.append(filters["agent"])
     if filters.get("priority"): clauses.append("q.priority=?"); values.append(filters["priority"])
     if filters.get("rank"): clauses.append("q.rank=?"); values.append(filters["rank"])
+    if filters.get("end_user"): clauses.append("q.customer_name LIKE ?"); values.append(f"%{filters['end_user']}%")
     if filters.get("safe") in {"0","1"}: clauses.append("q.is_safe=?"); values.append(int(filters["safe"]))
     start,end=database.validate_period(filters.get("start",""),filters.get("end",""))
     if start: clauses.append("q.quote_date BETWEEN ? AND ?"); values.extend([start,end])
@@ -401,22 +403,26 @@ def list_quotes(filters: dict[str,str]) -> list[dict[str,Any]]:
 
 
 def list_managed(filters: dict[str,str]|None=None) -> list[dict[str,Any]]:
-    filters=dict(filters or {}); rows=list_quotes(filters); result=[]
+    filters=dict(filters or {}); unmanaged=filters.get("status")=="unmanaged"
+    if unmanaged: filters["status"]="pending"
+    rows=list_quotes(filters); result=[]
     for row in rows:
-        if not row.get("last_reviewed_at"): continue
+        if bool(row.get("last_reviewed_at"))==unmanaged: continue
         if filters.get("overdue")=="1" and not row["overdue"]: continue
         result.append(row)
     if filters.get("order","status_activity")=="status_activity":
         status_order={"pending":0,"lost":1,"po":2}
-        result.sort(key=lambda row:(status_order.get(row["status"],9),-(datetime.fromisoformat(row["last_reviewed_at"]).timestamp())))
+        result.sort(key=lambda row:(status_order.get(row["status"],9),-(datetime.fromisoformat(row.get("last_reviewed_at") or row["discovered_at"]).timestamp())))
     else:
-        result.sort(key=lambda row:row["last_reviewed_at"],reverse=filters.get("order")!="oldest_activity")
+        result.sort(key=lambda row:row.get("last_reviewed_at") or row["discovered_at"],reverse=filters.get("order")!="oldest_activity")
     return result
 
 
 def list_management(filters:dict[str,str]|None=None)->list[dict[str,Any]]:
-    filters=dict(filters or {}); filters.pop("archive",None)
+    filters=dict(filters or {}); filters.pop("archive",None); unmanaged=filters.get("status")=="unmanaged"
+    if unmanaged: filters["status"]="pending"
     rows=list_quotes(filters)
+    if unmanaged: rows=[row for row in rows if not row.get("last_reviewed_at")]
     orders=filters.get("order","newest_activity")
     if orders in {"newest_activity","oldest_activity"}:
         rows.sort(key=lambda row:row.get("last_activity_at") or "",reverse=orders=="newest_activity")
@@ -436,12 +442,13 @@ def get_quote(quote_id:int)->dict[str,Any]:
 
 def update_quote(quote_id:int,status:str,comment:str,loss_reason:str,follow_up_type:str,is_safe:bool,
                  po_total_usd:float|None,po_date:str|None=None,actor:dict[str,Any]|None=None,
-                 invoices:list[dict[str,Any]]|None=None)->dict[str,Any]:
+                 invoices:list[dict[str,Any]]|None=None,client_response:str="pending")->dict[str,Any]:
     if status not in {"pending","po","lost"}: raise ValueError("Invalid status")
     if follow_up_type not in {"email","call","visit"}: raise ValueError("Select a follow-up method: E-mail, Call, or Visit")
     loss_reason=loss_reason.strip()
     if status=="lost" and loss_reason not in database.LOSS_REASONS: raise ValueError("Select a valid loss reason")
     if status!="lost": loss_reason=""
+    if client_response not in {"pending","yes","no"}: raise ValueError("Invalid client response")
     normalized_invoices=po_invoices.normalize(invoices,"JPY",legacy_total=po_total_usd,legacy_date=po_date,
         legacy_number=f"PO-{quote_id}") if status=="po" else []
     if status=="po": po_total_usd,po_date=po_invoices.totals(normalized_invoices)
@@ -461,9 +468,9 @@ def update_quote(quote_id:int,status:str,comment:str,loss_reason:str,follow_up_t
                  "po_total":po_total_usd!=current["po_total_usd"],"po_date":po_date!=current["po_date"],
                  "method":follow_up_type!=current["follow_up_type"],"comment":bool(comment)}
         db.execute("""UPDATE special_quotes SET status=?,loss_reason=?,follow_up_type=?,is_safe=?,po_total_usd=?,po_date=?,
-            comment=CASE WHEN ?<>'' THEN ? ELSE comment END,updated_at=?,last_reviewed_at=?,last_reviewed_by=?,
+            comment=CASE WHEN ?<>'' THEN ? ELSE comment END,client_response=?,updated_at=?,last_reviewed_at=?,last_reviewed_by=?,
             status_changed_at=CASE WHEN status<>? THEN ? ELSE status_changed_at END WHERE id=?""",
-            (status,loss_reason,follow_up_type,int(is_safe),po_total_usd,po_date,saved_comment,saved_comment,timestamp,timestamp,actor_id,status,timestamp,quote_id))
+            (status,loss_reason,follow_up_type,int(is_safe),po_total_usd,po_date,saved_comment,saved_comment,client_response,timestamp,timestamp,actor_id,status,timestamp,quote_id))
         if status=="po": po_invoices.replace(db,"special_quote_invoices",quote_id,normalized_invoices,actor_id,actor_name,timestamp)
         else: po_invoices.clear(db,"special_quote_invoices",quote_id,timestamp)
         db.execute("""INSERT INTO special_quote_events(quote_id,event_type,from_status,to_status,follow_up_type,note,user_id,user_name,created_at)
@@ -516,7 +523,16 @@ def dashboard(agent:str="",start:str="",end:str="")->dict[str,Any]:
             FROM special_quotes q WHERE q.status='po' AND q.is_archived=0
             {agent_clause}{po_period}""",po_params).fetchone())
         lost=db.execute(f"SELECT COUNT(*) AS value FROM special_quotes q WHERE q.status='lost' AND q.is_archived=0 {agent_clause}{quote_period}",quote_params).fetchone()["value"]
-        counts={**pending,**po,"lost":lost,"total":int(pending["all_pending"] or 0)+int(po["po"] or 0)+int(lost or 0)}
+        pending={key:(value or 0) for key,value in pending.items()}
+        po={key:(value or 0) for key,value in po.items()}
+        counts={**pending,**po,"lost":lost or 0,"total":int(pending["all_pending"])+int(po["po"])+int(lost or 0)}
+        responses_raw=database.rows_to_dicts(db.execute(f"""SELECT q.client_response,COUNT(*) AS count
+            FROM special_quotes q WHERE q.status='pending' AND q.is_archived=0 {agent_clause}{quote_period}
+            GROUP BY q.client_response""",quote_params).fetchall())
+        responses={"yes":0,"no":0,"pending":0}
+        for row in responses_raw:
+            value=row.get("client_response") or "pending"
+            if value in responses: responses[value]+=int(row["count"])
         priorities=database.rows_to_dicts(db.execute(f"""SELECT q.priority,COUNT(*) AS count,COALESCE(SUM(q.unit_price),0) AS value
             FROM special_quotes q WHERE q.status='pending' AND q.is_archived=0 {agent_clause}{quote_period}
             GROUP BY q.priority""",quote_params).fetchall())
@@ -527,7 +543,7 @@ def dashboard(agent:str="",start:str="",end:str="")->dict[str,Any]:
         last_import=db.execute("SELECT * FROM imports WHERE workspace='special' AND status='confirmed' ORDER BY id DESC LIMIT 1").fetchone()
         pending_rows=database.rows_to_dicts(db.execute(f"SELECT q.* FROM special_quotes q WHERE q.status='pending' AND q.is_safe=0 AND q.is_archived=0 {agent_clause}",agent_params).fetchall())
         overdue_all=sorted((row for row in (_decorate(row) for row in pending_rows) if row["overdue"]),key=lambda row:row["days_since_activity"],reverse=True)
-    return {"currency":"JPY","counts":counts,"added_today":added,"po_today":po_today,"po_missing":0,"priorities":priorities,
+    return {"currency":"JPY","counts":counts,"responses":responses,"added_today":added,"po_today":po_today,"po_missing":0,"priorities":priorities,
             "last_import":dict(last_import) if last_import else None,"overdue_count":len(overdue_all),"overdue_quotes":overdue_all[:8],
             "start_date":start,"end_date":end}
 
@@ -540,28 +556,45 @@ def report_activity(start_date:str,end_date:str,actor_user_id:int|None=None,agen
     quote_params=[start_date,end_date]+([agent] if agent else [])
     created_clause=" AND q.created_by_user_id=?" if actor_user_id else ""; created_params=[start_date,end_date]+([actor_user_id] if actor_user_id else [])+([agent] if agent else [])
     with database.connect() as db:
-        events=database.rows_to_dicts(db.execute(f"""SELECT e.*,q.source_quote_number AS folio,q.customer_name AS end_user,q.nt_agent,q.priority,q.status,
+        events=database.rows_to_dicts(db.execute(f"""SELECT e.*,q.source_quote_number AS folio,q.quote_date,q.customer_name AS end_user,q.nt_agent,q.priority,q.status,
             q.unit_price AS total_usd,q.po_total_usd,q.po_date,q.loss_reason,
             (SELECT COUNT(*) FROM special_quote_invoices i WHERE i.quote_id=q.id AND i.active=1) AS invoice_count
             FROM special_quote_events e JOIN special_quotes q ON q.id=e.quote_id
             WHERE date(e.created_at) BETWEEN ? AND ? {actor_clause} {agent_clause} AND q.is_archived=0 ORDER BY e.created_at,e.id""",event_params).fetchall())
         new_rows=database.rows_to_dicts(db.execute(f"SELECT q.* FROM special_quotes q WHERE date(q.discovered_at) BETWEEN ? AND ? {created_clause} {agent_clause} AND q.is_archived=0",created_params).fetchall())
-        pending=db.execute(f"SELECT COALESCE(SUM(q.unit_price),0) AS value FROM special_quotes q WHERE q.status='pending' AND q.quote_date BETWEEN ? AND ? {agent_clause} AND q.is_archived=0",quote_params).fetchone()["value"]
+        pending_rows=database.rows_to_dicts(db.execute(f"SELECT q.* FROM special_quotes q WHERE q.status='pending' AND q.quote_date BETWEEN ? AND ? {agent_clause} AND q.is_archived=0",quote_params).fetchall())
     reviews=[e for e in events if e["event_type"]=="review_saved"]; status_events=[e for e in events if e["event_type"]=="status_changed"]
     lost={e["quote_id"]:e for e in status_events if e["to_status"]=="lost"}; pos={e["quote_id"]:e for e in status_events if e["to_status"]=="po"}
-    breakdown:dict[str,int]={}
-    for e in lost.values(): reason=e.get("note") or e.get("loss_reason") or "Not specified"; breakdown[reason]=breakdown.get(reason,0)+1
+    breakdown:dict[str,int]={}; breakdown_detail:dict[str,dict[str,Any]]={}
+    for e in lost.values():
+        reason=e.get("note") or e.get("loss_reason") or "Not specified"; breakdown[reason]=breakdown.get(reason,0)+1
+        detail=breakdown_detail.setdefault(reason,{"count":0,"value":0.0}); detail["count"]+=1; detail["value"]+=float(e.get("total_usd") or 0)
     reviewed_ids={e["quote_id"] for e in reviews}; reviewed=[]
     for quote_id in reviewed_ids:
         matching=[e for e in events if e["quote_id"]==quote_id and e["event_type"] in {"review_saved","comment_added","status_changed","safe_changed","po_invoices_registered","po_invoices_updated","po_invoices_cleared"}]; base=matching[0]
         reviewed.append({"quote_id":quote_id,"folio":base["folio"] or f"SPQ-{quote_id:05d}","receptor":base["end_user"],"nt_agent":base["nt_agent"],"priority":base["priority"],"status":base["status"],"total":base["total_usd"],"net_total":None,"po_total":base["po_total_usd"],"events":matching})
-    po_rows=[{"folio":e["folio"] or f"SPQ-{e['quote_id']:05d}","receptor":e["end_user"],"po_date":e["po_date"],"quoted_total":e["total_usd"],"po_total":e["po_total_usd"],"invoice_count":e.get("invoice_count",0),"variance":float(e["po_total_usd"] or 0)-float(e["total_usd"] or 0)} for e in pos.values()]
-    lost_rows=[{"folio":e["folio"] or f"SPQ-{e['quote_id']:05d}","receptor":e["end_user"],"reason":e.get("note") or e.get("loss_reason") or "Not specified","date":e["created_at"][:10]} for e in lost.values()]
+    po_rows=[{"folio":e["folio"] or f"SPQ-{e['quote_id']:05d}","receptor":e["end_user"],"quote_date":e["quote_date"],"po_date":e["po_date"],"quoted_total":e["total_usd"],"po_total":e["po_total_usd"],"invoice_count":e.get("invoice_count",0),"variance":float(e["po_total_usd"] or 0)-float(e["total_usd"] or 0)} for e in pos.values()]
+    lost_rows=[{"folio":e["folio"] or f"SPQ-{e['quote_id']:05d}","receptor":e["end_user"],"quoted_total":e["total_usd"],"reason":e.get("note") or e.get("loss_reason") or "Not specified","date":e["created_at"][:10]} for e in lost.values()]
+    pipeline=database.executive_pipeline(pending_rows,"special")
+    cycle_days=[]
+    for row in po_rows:
+        try:
+            elapsed=(date.fromisoformat(str(row["po_date"])[:10])-date.fromisoformat(str(row["quote_date"])[:10])).days
+            if elapsed>=0: cycle_days.append(elapsed)
+        except (TypeError,ValueError):
+            pass
+    resolved=len(po_rows)+len(lost_rows)
     return {"workspace":"special","currency":"JPY","start_date":start_date,"end_date":end_date,"new_quotes":len(new_rows),
             "quotes_reviewed":len(reviewed_ids),"status_changes":len(status_events),"po_changes":len(po_rows),"lost_changes":len(lost_rows),
-            "pending_value":float(pending or 0),"po_quoted_value":sum(float(r["quoted_total"] or 0) for r in po_rows),
+            "pending_value":sum(float(row.get("unit_price") or 0) for row in pending_rows),"pending_count":pipeline["pending_count"],
+            "new_value":sum(float(row.get("unit_price") or 0) for row in new_rows),
+            "lost_value":sum(float(row.get("quoted_total") or 0) for row in lost_rows),
+            "conversion_rate":(len(po_rows)/resolved*100) if resolved else None,
+            "average_po_days":(sum(cycle_days)/len(cycle_days)) if cycle_days else None,
+            "po_quoted_value":sum(float(r["quoted_total"] or 0) for r in po_rows),
             "po_value":sum(float(r["po_total"] or 0) for r in po_rows),"loss_breakdown":breakdown,"po_rows":po_rows,
-            "lost_rows":lost_rows,"reviewed":reviewed,"new_rows":new_rows}
+            "loss_breakdown_detail":breakdown_detail,"lost_rows":lost_rows,"reviewed":reviewed,"new_rows":new_rows,
+            **{key:value for key,value in pipeline.items() if key!="pending_count"}}
 
 
 def monthly_report(months:int=12,agent:str="")->list[dict[str,Any]]:

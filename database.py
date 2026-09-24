@@ -42,6 +42,10 @@ DEFAULT_QUOTATION_ROOT = r"C:\Users\fcoar\Dropbox\Quotation"
 PARSER_VERSION = 3
 LOSS_REASONS = ("Lead Time", "Over Budget", "Window Shopping", "Project Cancelled", "Mismatch", "Stale Quote")
 LOCAL_TIME_ZONE = ZoneInfo(os.environ.get("NT_QUOTE_TIME_ZONE", "America/Mexico_City"))
+REVIEW_EVENT_TYPES = (
+    "review_saved", "reviewed", "comment_added", "comment_updated",
+    "status_changed", "safe_changed", "po_date_updated", "po_total_updated",
+)
 
 
 class ClosingConnection(sqlite3.Connection):
@@ -58,6 +62,18 @@ def local_now() -> datetime:
 
 def today_local() -> date:
     return local_now().date()
+
+
+def calendar_periods(reference: date | None = None) -> dict[str, str]:
+    """Return business-calendar boundaries using the configured Mexico time zone."""
+    current = reference or today_local()
+    fiscal_year = current.year - 1 if current.month < 4 else current.year
+    return {
+        "today": current.isoformat(),
+        "month_start": current.replace(day=1).isoformat(),
+        "fiscal_start": date(fiscal_year, 4, 1).isoformat(),
+        "time_zone": str(LOCAL_TIME_ZONE),
+    }
 
 
 def now_iso() -> str:
@@ -90,9 +106,10 @@ def _days_since(value: str | None) -> int:
 
 def decorate_quote(row: dict[str, Any]) -> dict[str, Any]:
     row["quote_age_days"] = _days_since(str(row.get("quote_date") or ""))
-    activity = row.get("last_reviewed_at") or row.get("discovered_at") or row.get("updated_at")
+    resolved_activity = row.get("status_changed_at") if row.get("status") in {"po", "lost"} else None
+    activity = resolved_activity or row.get("last_reviewed_at") or row.get("discovered_at") or row.get("updated_at")
     row["last_activity_at"] = activity
-    row["activity_is_initial"] = int(not bool(row.get("last_reviewed_at")))
+    row["activity_is_initial"] = int(row.get("status") == "pending" and not bool(row.get("last_reviewed_at")))
     row["days_since_activity"] = _days_since(str(activity or ""))
     row["overdue"] = int(row.get("status") == "pending" and not row.get("is_safe") and row["days_since_activity"] >= 15)
     return row
@@ -115,6 +132,43 @@ def _ensure_columns(db: sqlite3.Connection, table: str, definitions: dict[str, s
             db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
 
 
+def backfill_review_metadata(
+    db: sqlite3.Connection, quote_table: str, event_table: str, comment_table: str
+) -> None:
+    """Recover review timestamps created before last_reviewed_at existed."""
+    allowed = {
+        ("quotes", "quote_events", "quote_comments"),
+        ("special_quotes", "special_quote_events", "special_quote_comments"),
+    }
+    if (quote_table, event_table, comment_table) not in allowed:
+        raise ValueError("Unsupported review metadata tables")
+    marks = ",".join("?" for _ in REVIEW_EVENT_TYPES)
+    review_time = f"""COALESCE(
+        (SELECT MAX(reviewed_at) FROM (
+            SELECT e.created_at AS reviewed_at FROM {event_table} e
+            WHERE e.quote_id=q.id AND e.event_type IN ({marks})
+            UNION ALL
+            SELECT c.created_at AS reviewed_at FROM {comment_table} c WHERE c.quote_id=q.id
+        )),
+        CASE WHEN q.status<>'pending' OR q.is_safe=1 OR trim(COALESCE(q.follow_up_type,''))<>''
+                  OR trim(COALESCE(q.comment,''))<>''
+             THEN COALESCE(NULLIF(q.updated_at,''),q.status_changed_at) END
+    )"""
+    db.execute(
+        f"""UPDATE {quote_table} AS q SET last_reviewed_at={review_time}
+        WHERE q.last_reviewed_at IS NULL AND {review_time} IS NOT NULL""",
+        (*REVIEW_EVENT_TYPES, *REVIEW_EVENT_TYPES),
+    )
+    db.execute(
+        f"""UPDATE {quote_table} AS q SET last_reviewed_by=(
+            SELECT e.user_id FROM {event_table} e
+            WHERE e.quote_id=q.id AND e.event_type IN ({marks}) AND e.user_id IS NOT NULL
+            ORDER BY e.created_at DESC,e.id DESC LIMIT 1
+        ) WHERE q.last_reviewed_at IS NOT NULL AND q.last_reviewed_by IS NULL""",
+        REVIEW_EVENT_TYPES,
+    )
+
+
 def initialize() -> None:
     with connect() as db:
         db.executescript(
@@ -125,6 +179,14 @@ def initialize() -> None:
                 code TEXT PRIMARY KEY,
                 company_name TEXT NOT NULL,
                 normalized_name TEXT NOT NULL UNIQUE
+            );
+
+            CREATE TABLE IF NOT EXISTS distributor_unmatched (
+                normalized_name TEXT PRIMARY KEY,
+                company_name TEXT NOT NULL,
+                first_seen_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL,
+                occurrences INTEGER NOT NULL DEFAULT 1
             );
 
             CREATE TABLE IF NOT EXISTS quotes (
@@ -304,6 +366,7 @@ def initialize() -> None:
             )
             """
         )
+        backfill_review_metadata(db, "quotes", "quote_events", "quote_comments")
 
 
 def get_setting(key: str, default: str = "") -> str:
@@ -322,7 +385,17 @@ def distributor_code_for(db: sqlite3.Connection, company_name: str) -> str:
     if not normalized:
         return ""
     row = db.execute("SELECT code FROM distributor_catalog WHERE normalized_name=?", (normalized,)).fetchone()
-    return str(row["code"]) if row else ""
+    if row:
+        db.execute("DELETE FROM distributor_unmatched WHERE normalized_name=?", (normalized,))
+        return str(row["code"])
+    timestamp = now_iso()
+    db.execute(
+        """INSERT INTO distributor_unmatched(normalized_name,company_name,first_seen_at,last_seen_at,occurrences)
+        VALUES(?,?,?,?,1) ON CONFLICT(normalized_name) DO UPDATE SET
+        company_name=excluded.company_name,last_seen_at=excluded.last_seen_at,occurrences=distributor_unmatched.occurrences+1""",
+        (normalized, str(company_name or "").strip(), timestamp, timestamp),
+    )
+    return ""
 
 
 def rows_to_dicts(rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
@@ -574,6 +647,13 @@ def _quote_where(filters: dict[str, str], alias: str = "q") -> tuple[list[str], 
         clauses.append(f"{alias}.nt_agent=?"); values.append(filters["agent"])
     if filters.get("priority"):
         clauses.append(f"{alias}.priority=?"); values.append(filters["priority"])
+    if filters.get("distributor"):
+        needle = f"%{filters['distributor']}%"
+        clauses.append(f"({alias}.distributor_code LIKE ? OR {alias}.distributor_company LIKE ?)")
+        values.extend([needle, needle])
+    if filters.get("end_user"):
+        clauses.append(f"{alias}.end_user LIKE ?")
+        values.append(f"%{filters['end_user']}%")
     if filters.get("safe") in {"0", "1"}:
         clauses.append(f"{alias}.is_safe=?"); values.append(int(filters["safe"]))
     if filters.get("po_missing") == "1":
@@ -615,16 +695,13 @@ def list_managed_quotes(filters: dict[str, str] | None = None) -> list[dict[str,
         filters["status"] = "pending"
         
     clauses, values = _quote_where(filters)
-    
-    # Exigimos a la base de datos que la fecha de revisión esté vacía si piden "No gestionadas"
-    if unmanaged:
-        clauses.append("q.last_reviewed_at IS NULL")
+    clauses.append("q.last_reviewed_at IS NULL" if unmanaged else "q.last_reviewed_at IS NOT NULL")
         
     orders = {
         "priority": "CASE q.priority WHEN 'S' THEN 1 WHEN 'A' THEN 2 WHEN 'B' THEN 3 ELSE 4 END,q.total_usd DESC",
         "date_desc": "q.quote_date DESC,CAST(q.folio_number AS INTEGER) DESC",
         "date_asc": "q.quote_date ASC,CAST(q.folio_number AS INTEGER) ASC",
-        "status_activity": "datetime(COALESCE(q.last_reviewed_at,q.discovered_at)) DESC",
+        "status_activity": "CASE q.status WHEN 'pending' THEN 1 WHEN 'lost' THEN 2 WHEN 'po' THEN 3 ELSE 4 END,datetime(COALESCE(q.last_reviewed_at,q.discovered_at)) DESC",
         "newest_activity": "datetime(COALESCE(q.last_reviewed_at,q.discovered_at)) DESC",
         "oldest_activity": "datetime(COALESCE(q.last_reviewed_at,q.discovered_at)) ASC",
     }
@@ -697,6 +774,8 @@ def update_quote(quote_id: int, status: str, comment: str, loss_reason: str, fol
     if status == "lost" and loss_reason not in LOSS_REASONS:
         raise ValueError("Select a valid loss reason")
     if status != "lost": loss_reason = ""
+    if client_response not in {"pending", "yes", "no"}:
+        raise ValueError("Invalid client response")
     normalized_invoices = po_invoices.normalize(
         invoices,"USD",legacy_total=po_total_usd,legacy_date=po_date,legacy_number=f"PO-{quote_id}"
     ) if status == "po" else []
@@ -780,7 +859,9 @@ def dashboard(agent: str = "", start: str = "", end: str = "") -> dict[str, Any]
         lost = db.execute(
             f"""SELECT COUNT(*) AS value FROM quotes q WHERE q.status='lost' AND q.is_archived=0
             AND q.is_historical=0 {agent_clause}{quote_period}""", quote_params).fetchone()["value"]
-        counts = {**pending, **po, "lost": lost, "total": int(pending["all_pending"] or 0)+int(po["po"] or 0)+int(lost or 0)}
+        pending = {key: (value or 0) for key, value in pending.items()}
+        po = {key: (value or 0) for key, value in po.items()}
+        counts = {**pending, **po, "lost": lost or 0, "total": int(pending["all_pending"])+int(po["po"])+int(lost or 0)}
         
         # --- NUEVO: Gráfica de Efectividad de Contacto ---
         responses_raw = rows_to_dicts(db.execute(
@@ -828,6 +909,71 @@ def agents() -> list[str]:
     return [row["nt_agent"] for row in rows]
 
 
+def executive_pipeline(rows: list[dict[str, Any]], workspace: str) -> dict[str, Any]:
+    """Summarize the current pending pipeline for the one-page report."""
+    amount_key = "unit_price" if workspace == "special" else "total_usd"
+    decorated = [decorate_quote(dict(row)) for row in rows]
+    priorities = []
+    for priority in "SABC":
+        matching = [row for row in decorated if row.get("priority") == priority]
+        priorities.append({
+            "priority": priority,
+            "count": len(matching),
+            "value": sum(float(row.get(amount_key) or 0) for row in matching),
+        })
+
+    followup_soon = [row for row in decorated if not row.get("is_safe") and 9 <= row["days_since_activity"] <= 14]
+    followup_due = [row for row in decorated if not row.get("is_safe") and row["days_since_activity"] >= 15]
+    stale = [row for row in decorated if row["quote_age_days"] > 90]
+    po_missing = [
+        row for row in decorated
+        if workspace == "standard" and row.get("po_detected") and not row.get("po_date")
+    ]
+
+    def alert(rows_for_alert: list[dict[str, Any]]) -> dict[str, Any]:
+        return {
+            "count": len(rows_for_alert),
+            "value": sum(float(row.get(amount_key) or 0) for row in rows_for_alert),
+        }
+
+    candidates = []
+    for row in decorated:
+        categories = []
+        if row.get("priority") in {"S", "A"} and not row.get("is_safe") and row["days_since_activity"] >= 15:
+            categories.append(0)
+        if row["quote_age_days"] > 90:
+            categories.append(1)
+        if workspace == "standard" and row.get("po_detected") and not row.get("po_date"):
+            categories.append(2)
+        if not categories:
+            continue
+        candidates.append((min(categories), -float(row.get(amount_key) or 0), -row["days_since_activity"], row))
+    candidates.sort(key=lambda item: item[:3])
+    action_rows = []
+    for _, _, _, row in candidates[:10]:
+        action_rows.append({
+            "priority": row.get("priority") or "C",
+            "folio": row.get("folio") or row.get("source_quote_number") or f"SPQ-{row.get('id',0):05d}",
+            "distributor_code": row.get("distributor_code") or "—",
+            "end_user": row.get("end_user") or row.get("customer_name") or row.get("receptor") or "—",
+            "amount": float(row.get(amount_key) or 0),
+            "days_since_activity": int(row.get("days_since_activity") or 0),
+            "nt_agent": row.get("nt_agent") or "—",
+        })
+    return {
+        "pending_count": len(decorated),
+        "priorities": priorities,
+        "alerts": {
+            "followup_9_14": alert(followup_soon),
+            "followup_15_plus": alert(followup_due),
+            "stale_90_plus": alert(stale),
+            "po_date_missing": alert(po_missing),
+        },
+        "action_rows": action_rows,
+        "action_remaining": max(0, len(candidates) - len(action_rows)),
+    }
+
+
 def report_activity(start_date: str, end_date: str, actor_user_id: int | None = None, agent: str = "") -> dict[str, Any]:
     start = date.fromisoformat(start_date); end = date.fromisoformat(end_date)
     if end < start: raise ValueError("End date cannot be before start date")
@@ -838,7 +984,7 @@ def report_activity(start_date: str, end_date: str, actor_user_id: int | None = 
     created_params: list[Any] = [start_date,end_date] + ([actor_user_id] if actor_user_id else []) + ([agent] if agent else [])
     with connect() as db:
         events = rows_to_dicts(db.execute(
-            f"""SELECT e.*,q.folio,q.end_user,q.nt_agent,q.priority,q.status,q.total_usd,q.net_total_usd,
+            f"""SELECT e.*,q.folio,q.quote_date,q.distributor_code,q.end_user,q.nt_agent,q.priority,q.status,q.total_usd,q.net_total_usd,
             q.po_total_usd,q.po_date,q.loss_reason,
             (SELECT COUNT(*) FROM quote_invoices i WHERE i.quote_id=q.id AND i.active=1) AS invoice_count
             FROM quote_events e JOIN quotes q ON q.id=e.quote_id
@@ -846,15 +992,18 @@ def report_activity(start_date: str, end_date: str, actor_user_id: int | None = 
             ORDER BY e.created_at,e.id""", event_params).fetchall())
         new_quotes = rows_to_dicts(db.execute(
             f"SELECT q.* FROM quotes q WHERE date(q.discovered_at) BETWEEN ? AND ? {created_actor} {quote_agent} AND q.is_historical=0 AND q.is_archived=0 ORDER BY q.discovered_at", created_params).fetchall())
-        pending_total = db.execute(
-            f"SELECT COALESCE(SUM(q.total_usd),0) AS value FROM quotes q WHERE q.status='pending' AND q.quote_date BETWEEN ? AND ? {quote_agent} AND q.is_historical=0 AND q.is_archived=0", quote_params).fetchone()["value"]
+        pending_rows = rows_to_dicts(db.execute(
+            f"SELECT q.* FROM quotes q WHERE q.status='pending' AND q.quote_date BETWEEN ? AND ? {quote_agent} AND q.is_historical=0 AND q.is_archived=0",
+            quote_params,
+        ).fetchall())
     reviews = [e for e in events if e["event_type"]=="review_saved"]
     status_events = [e for e in events if e["event_type"]=="status_changed"]
     lost_by_quote = {e["quote_id"]:e for e in status_events if e["to_status"]=="lost"}
     po_by_quote = {e["quote_id"]:e for e in status_events if e["to_status"]=="po"}
-    loss_breakdown: dict[str,int] = {}
+    loss_breakdown: dict[str,int] = {}; loss_breakdown_detail: dict[str,dict[str,Any]] = {}
     for e in lost_by_quote.values():
         reason = e.get("note") or e.get("loss_reason") or "Not specified"; loss_breakdown[reason] = loss_breakdown.get(reason,0)+1
+        detail=loss_breakdown_detail.setdefault(reason,{"count":0,"value":0.0}); detail["count"]+=1; detail["value"]+=float(e.get("total_usd") or 0)
     reviewed_ids = {e["quote_id"] for e in reviews}; reviewed = []
     for quote_id in reviewed_ids:
         matching = [e for e in events if e["quote_id"]==quote_id and e["event_type"] in {"review_saved","comment_added","status_changed","safe_changed","po_invoices_registered","po_invoices_updated","po_invoices_cleared"}]
@@ -862,15 +1011,29 @@ def report_activity(start_date: str, end_date: str, actor_user_id: int | None = 
         reviewed.append({"quote_id":quote_id,"folio":base["folio"],"receptor":base["end_user"],"nt_agent":base["nt_agent"],
                          "priority":base["priority"],"status":base["status"],"total":base["total_usd"],
                          "net_total":base["net_total_usd"],"po_total":base["po_total_usd"],"events":matching})
-    po_rows = [{"folio":e["folio"],"receptor":e["end_user"],"po_date":e["po_date"],"quoted_total":e["total_usd"],
+    po_rows = [{"folio":e["folio"],"receptor":e["end_user"],"quote_date":e["quote_date"],"po_date":e["po_date"],"quoted_total":e["total_usd"],
                 "po_total":e["po_total_usd"],"invoice_count":e.get("invoice_count",0),
                 "variance":float(e["po_total_usd"] or 0)-float(e["total_usd"] or 0)} for e in po_by_quote.values()]
-    lost_rows = [{"folio":e["folio"],"receptor":e["end_user"],"reason":e.get("note") or e.get("loss_reason") or "Not specified","date":e["created_at"][:10]} for e in lost_by_quote.values()]
+    lost_rows = [{"folio":e["folio"],"receptor":e["end_user"],"quoted_total":e["total_usd"],"reason":e.get("note") or e.get("loss_reason") or "Not specified","date":e["created_at"][:10]} for e in lost_by_quote.values()]
+    pipeline=executive_pipeline(pending_rows,"standard")
+    cycle_days=[]
+    for row in po_rows:
+        try:
+            elapsed=(date.fromisoformat(str(row["po_date"])[:10])-date.fromisoformat(str(row["quote_date"])[:10])).days
+            if elapsed>=0: cycle_days.append(elapsed)
+        except (TypeError,ValueError):
+            pass
+    resolved=len(po_rows)+len(lost_rows)
     return {"workspace":"standard","currency":"USD","start_date":start_date,"end_date":end_date,
             "new_quotes":len(new_quotes),"quotes_reviewed":len(reviewed_ids),"status_changes":len(status_events),
-            "po_changes":len(po_rows),"lost_changes":len(lost_rows),"pending_value":float(pending_total or 0),
+            "po_changes":len(po_rows),"lost_changes":len(lost_rows),"pending_value":sum(float(row.get("total_usd") or 0) for row in pending_rows),
+            "pending_count":pipeline["pending_count"],"new_value":sum(float(row.get("total_usd") or 0) for row in new_quotes),
+            "lost_value":sum(float(row.get("quoted_total") or 0) for row in lost_rows),
+            "conversion_rate":(len(po_rows)/resolved*100) if resolved else None,
+            "average_po_days":(sum(cycle_days)/len(cycle_days)) if cycle_days else None,
             "po_quoted_value":sum(float(r["quoted_total"] or 0) for r in po_rows),"po_value":sum(float(r["po_total"] or 0) for r in po_rows),
-            "loss_breakdown":loss_breakdown,"po_rows":po_rows,"lost_rows":lost_rows,"reviewed":reviewed,"new_rows":new_quotes}
+            "loss_breakdown":loss_breakdown,"loss_breakdown_detail":loss_breakdown_detail,"po_rows":po_rows,"lost_rows":lost_rows,
+            "reviewed":reviewed,"new_rows":new_quotes,**{key:value for key,value in pipeline.items() if key!="pending_count"}}
 
 
 def monthly_report(months: int = 12, agent: str = "") -> list[dict[str, Any]]:

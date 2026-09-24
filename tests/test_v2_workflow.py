@@ -114,10 +114,54 @@ class V2WorkflowTests(unittest.TestCase):
         report=database.report_activity(date.today().isoformat(),date.today().isoformat(),self.user["id"])
         self.assertEqual(report["quotes_reviewed"],1); self.assertEqual(report["po_changes"],1); self.assertEqual(report["po_value"],6200)
         self.assertEqual(report["po_rows"][0]["invoice_count"],2)
-        pdf_path=Path(self.temp.name)/"report.pdf"; pdf=build_report_pdf({**report,"generated_by":self.user["display_name"],"scope":"mine","agent":""},pdf_path,"en")
-        self.assertTrue(pdf.startswith(b"%PDF")); self.assertIn("Quotation follow-up report","\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(pdf)).pages))
-        xlsx_path=Path(self.temp.name)/"report.xlsx"; build_report_xlsx(report,xlsx_path,"es"); self.assertEqual(load_workbook(xlsx_path).sheetnames,["Resumen","PO","Perdidas","Revisadas"])
+        pdf_path=Path(self.temp.name)/"report.pdf"; pdf=build_report_pdf({**report,"generated_by":self.user["display_name"],"generated_at":database.now_iso(),"scope":"mine","agent":""},pdf_path,"en")
+        reader=PdfReader(BytesIO(pdf)); report_text="\n".join(page.extract_text() or "" for page in reader.pages)
+        self.assertTrue(pdf.startswith(b"%PDF")); self.assertEqual(len(reader.pages),1)
+        self.assertIn("QUOTATION FOLLOW-UP REPORT",report_text); self.assertIn("CONVERSION",report_text); self.assertIn("QUOTATIONS REQUIRING ACTION",report_text)
+        xlsx_path=Path(self.temp.name)/"report.xlsx"; build_report_xlsx(report,xlsx_path,"es"); report_book=load_workbook(xlsx_path)
+        self.assertEqual(report_book.sheetnames,["Resumen","PO","Perdidas","Revisadas"])
+        self.assertEqual(report_book["Resumen"]["A11"].value,"Tasas de conversión")
+        self.assertEqual(report_book["Resumen"]["B12"].value,1); self.assertEqual(report_book["Resumen"]["C12"].value,1)
         repeated=imports_manager.preview("standard",content,"daily.xlsx",self.user); self.assertEqual(repeated["updated"],2)
+
+    def test_executive_pdf_handles_empty_results_and_overflow_actions(self)->None:
+        action_rows=[{
+            "priority":"S" if index<3 else "A","folio":f"QT-{index:04d}","distributor_code":"ABC",
+            "end_user":"CUSTOMER WITH A VERY LONG CORPORATE NAME THAT MUST BE TRUNCATED SAFELY",
+            "amount":99999999+index,"days_since_activity":91+index,"nt_agent":"AGENT WITH A LONG DISPLAY NAME",
+        } for index in range(12)]
+        base={
+            "start_date":"2026-01-01","end_date":"2026-09-24","scope":"all","agent":"",
+            "generated_by":"TEST USER","generated_at":database.now_iso(),"pending_count":12,
+            "pending_value":1199999994,"new_quotes":0,"new_value":0,"quotes_reviewed":0,
+            "po_changes":0,"po_value":0,"lost_changes":0,"lost_value":0,"conversion_rate":None,
+            "po_quoted_value":0,"average_po_days":None,"priorities":[],"loss_breakdown_detail":{},
+            "alerts":{"followup_9_14":{"count":0,"value":0},"followup_15_plus":{"count":12,"value":1199999994},
+                      "stale_90_plus":{"count":12,"value":1199999994},"po_date_missing":{"count":0,"value":0}},
+            "action_rows":action_rows,"action_remaining":2,
+        }
+        for workspace,currency,language in (("standard","USD","en"),("special","JPY","es")):
+            pdf=build_report_pdf({**base,"workspace":workspace,"currency":currency},Path(self.temp.name)/f"{workspace}-overflow.pdf",language)
+            reader=PdfReader(BytesIO(pdf)); text="\n".join(page.extract_text() or "" for page in reader.pages)
+            self.assertEqual(len(reader.pages),1); self.assertIn("N/A",text); self.assertIn("+2",text)
+
+    def test_executive_pipeline_alert_boundaries_and_deduplication(self)->None:
+        today=date.today()
+        rows=[]
+        for index,days in enumerate((8,9,14,15,90,91),start=1):
+            rows.append({
+                "id":index,"folio":f"QT-{index}","quote_date":(today-timedelta(days=days)).isoformat(),
+                "discovered_at":(today-timedelta(days=days)).isoformat(),"last_reviewed_at":None,
+                "updated_at":(today-timedelta(days=days)).isoformat(),"status":"pending","is_safe":0,
+                "priority":"S","total_usd":1000*index,"distributor_code":"ABC","end_user":"CLIENT",
+                "nt_agent":"AGENT","po_detected":1 if days==91 else 0,"po_date":None,
+            })
+        pipeline=database.executive_pipeline(rows,"standard")
+        self.assertEqual(pipeline["alerts"]["followup_9_14"]["count"],2)
+        self.assertEqual(pipeline["alerts"]["followup_15_plus"]["count"],3)
+        self.assertEqual(pipeline["alerts"]["stale_90_plus"]["count"],1)
+        self.assertEqual(pipeline["alerts"]["po_date_missing"]["count"],1)
+        self.assertEqual(len(pipeline["action_rows"]),3)
 
     def test_special_duplicate_visibility_and_archive(self)->None:
         content=special_book(); records,errors=special.parse_workbook(content,"special.xlsx")
@@ -145,6 +189,34 @@ class V2WorkflowTests(unittest.TestCase):
         changed_quote=next(row for row in special.list_quotes({}) if row["source_quote_number"]=="S3")
         self.assertEqual(changed_quote["unit_price"],2250)
 
+    def test_managed_and_unmanaged_views_are_consistent_in_both_workspaces(self)->None:
+        standard_preview=imports_manager.preview("standard",standard_book(),"daily.xlsx",self.user)
+        imports_manager.confirm("standard",standard_preview["token"],self.user)
+        standard_rows=database.list_quotes({})
+        self.assertEqual(database.list_managed_quotes({}),[])
+        self.assertEqual(len(database.list_management_quotes({"status":"unmanaged"})),2)
+        standard_quote=next(row for row in standard_rows if row["folio"]=="QTI-101")
+        database.update_quote(standard_quote["id"],"pending","","","email",False,None,None,self.user)
+        self.assertEqual([row["id"] for row in database.list_managed_quotes({})],[standard_quote["id"]])
+        self.assertNotIn(standard_quote["id"],[row["id"] for row in database.list_management_quotes({"status":"unmanaged"})])
+
+        special_preview=imports_manager.preview("special",special_book(),"special.xlsx",self.user)
+        imports_manager.confirm("special",special_preview["token"],self.user)
+        special_rows=special.list_quotes({})
+        self.assertEqual(special.list_managed({}),[])
+        self.assertEqual(len(special.list_management({"status":"unmanaged"})),3)
+        special_quote=next(row for row in special_rows if row["source_quote_number"]=="S3")
+        special.update_quote(special_quote["id"],"pending","","","visit",False,None,None,self.user)
+        self.assertEqual([row["id"] for row in special.list_managed({})],[special_quote["id"]])
+        self.assertNotIn(special_quote["id"],[row["id"] for row in special.list_management({"status":"unmanaged"})])
+
+        with database.connect() as db:
+            db.execute("UPDATE quotes SET last_reviewed_at=NULL,last_reviewed_by=NULL WHERE id=?",(standard_quote["id"],))
+            db.execute("UPDATE special_quotes SET last_reviewed_at=NULL,last_reviewed_by=NULL WHERE id=?",(special_quote["id"],))
+        database.initialize(); special.initialize()
+        self.assertEqual([row["id"] for row in database.list_managed_quotes({})],[standard_quote["id"]])
+        self.assertEqual([row["id"] for row in special.list_managed({})],[special_quote["id"]])
+
     def test_special_po_uses_multiple_jpy_invoices(self)->None:
         preview=imports_manager.preview("special",special_book(),"special.xlsx",self.user)
         imports_manager.confirm("special",preview["token"],self.user)
@@ -159,6 +231,9 @@ class V2WorkflowTests(unittest.TestCase):
         self.assertEqual(special.dashboard()["po_today"],1)
         report=special.report_activity(date.today().isoformat(),date.today().isoformat(),self.user["id"])
         self.assertEqual(report["po_value"],1050000); self.assertEqual(report["po_rows"][0]["invoice_count"],2)
+        pdf=build_report_pdf({**report,"generated_by":self.user["display_name"],"generated_at":database.now_iso(),"scope":"mine","agent":""},Path(self.temp.name)/"special-report.pdf","es")
+        reader=PdfReader(BytesIO(pdf)); report_text="\n".join(page.extract_text() or "" for page in reader.pages)
+        self.assertEqual(len(reader.pages),1); self.assertIn("JPY",report_text); self.assertIn("OPERACIONES QUE REQUIEREN",report_text)
 
     def test_historical_po_totals_migrate_to_legacy_invoices(self)->None:
         standard_preview=imports_manager.preview("standard",standard_book(),"daily.xlsx",self.user)
@@ -200,7 +275,8 @@ class V2WorkflowTests(unittest.TestCase):
         self.assertAlmostEqual(detail["po_total_usd"],350.25)
         self.assertEqual(detail["po_date"],"2026-09-12")
         self.assertIn("USD 350.25",detail["comments"][-1]["body"])
-        self.assertEqual(detail["events"][-1]["event_type"],"po_invoices_updated")
+        self.assertIn("po_invoices_registered",[event["event_type"] for event in detail["events"]])
+        self.assertEqual(detail["events"][-1]["event_type"],"status_changed")
 
         repeated=invoice_manager.preview("standard",invoice_book(include_unmatched=False),"invoices-again.xlsx",self.user)
         self.assertEqual((repeated["new"],repeated["duplicate"]),(0,2))
@@ -209,11 +285,11 @@ class V2WorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"already been confirmed"):
             invoice_manager.confirm("standard",repeated["token"],self.user)
 
-    def test_invoice_excel_rejects_non_po_and_special_workspace(self)->None:
+    def test_invoice_excel_accepts_detected_orders_and_rejects_special_workspace(self)->None:
         quotation=imports_manager.preview("standard",standard_book(),"daily.xlsx",self.user)
         imports_manager.confirm("standard",quotation["token"],self.user)
         preview=invoice_manager.preview("standard",invoice_book(include_unmatched=False),"invoices.xlsx",self.user)
-        self.assertEqual((preview["new"],preview["not_po"]),(0,2))
+        self.assertEqual((preview["new"],preview["not_po"]),(2,0))
         with self.assertRaisesRegex(ValueError,"only in Follow Up Quotations"):
             invoice_manager.preview("special",invoice_book(),"invoices.xlsx",self.user)
 
@@ -291,6 +367,89 @@ class V2WorkflowTests(unittest.TestCase):
         self.assertIn("el.matches('label')",javascript)
         self.assertIn(":scope > input, :scope > select, :scope > textarea",javascript)
         self.assertNotIn("forEach(el=>el.textContent=t(el.dataset.i18n))",javascript)
+
+    def test_calendar_boundaries_and_frontend_regressions(self)->None:
+        self.assertEqual(database.calendar_periods(date(2026,3,31))["fiscal_start"],"2025-04-01")
+        self.assertEqual(database.calendar_periods(date(2026,4,1))["fiscal_start"],"2026-04-01")
+        html=(PROJECT_DIR/"static"/"index.html").read_text(encoding="utf-8")
+        javascript=(PROJECT_DIR/"static"/"app.js").read_text(encoding="utf-8")
+        self.assertEqual(javascript.count("async function selectSystem"),1)
+        self.assertEqual(javascript.count("$('#user-edit-form').addEventListener('submit'"),1)
+        self.assertNotIn("confirm(",javascript)
+        self.assertIn('id="stale-warning"',html)
+        self.assertNotIn('<option value="ja">',html)
+        self.assertIn("Perfil de visualización",javascript)
+
+    def test_client_response_is_persisted_in_both_workspaces(self)->None:
+        standard_preview=imports_manager.preview("standard",standard_book(),"daily.xlsx",self.user)
+        imports_manager.confirm("standard",standard_preview["token"],self.user)
+        standard_quote=next(row for row in database.list_quotes({}) if row["folio"]=="QTI-101")
+        updated=database.update_quote(standard_quote["id"],"pending","","","email",False,None,None,self.user,client_response="yes")
+        self.assertEqual(updated["client_response"],"yes")
+        self.assertEqual(database.dashboard()["responses"]["yes"],1)
+        with self.assertRaisesRegex(ValueError,"Invalid client response"):
+            database.update_quote(standard_quote["id"],"pending","","","email",False,None,None,self.user,client_response="maybe")
+
+        special_preview=imports_manager.preview("special",special_book(),"special.xlsx",self.user)
+        imports_manager.confirm("special",special_preview["token"],self.user)
+        special_quote=next(row for row in special.list_quotes({}) if row["source_quote_number"]=="S3")
+        updated=special.update_quote(special_quote["id"],"pending","","","call",False,None,None,self.user,client_response="no")
+        self.assertEqual(updated["client_response"],"no")
+        self.assertEqual(special.dashboard()["responses"]["no"],1)
+
+    def test_managed_status_grouping_and_activity_timestamp(self)->None:
+        preview=imports_manager.preview("standard",standard_book(),"daily.xlsx",self.user)
+        imports_manager.confirm("standard",preview["token"],self.user)
+        rows=database.list_quotes({})
+        pending=next(row for row in rows if row["folio"]=="QTI-101")
+        converted=next(row for row in rows if row["folio"]=="QT-100")
+        database.update_quote(pending["id"],"pending","","","email",False,None,None,self.user)
+        database.update_quote(converted["id"],"lost","","Over Budget","call",False,None,None,self.user)
+        managed=database.list_managed_quotes({})
+        self.assertEqual([row["status"] for row in managed],["pending","lost"])
+        lost=next(row for row in managed if row["status"]=="lost")
+        self.assertEqual(lost["last_activity_at"],lost["status_changed_at"])
+        self.assertEqual(lost["quote_age_days"],database._days_since(lost["quote_date"]))
+
+    def test_special_managed_returns_every_reviewed_status_group(self)->None:
+        preview=imports_manager.preview("special",special_book(),"special.xlsx",self.user)
+        imports_manager.confirm("special",preview["token"],self.user)
+        rows=special.list_quotes({})
+        self.assertEqual(len(rows),3)
+        special.update_quote(rows[0]["id"],"pending","","","email",False,None,None,self.user)
+        special.update_quote(rows[1]["id"],"lost","","Mismatch","call",False,None,None,self.user)
+        special.update_quote(rows[2]["id"],"po","","","visit",False,None,None,self.user,[{
+            "invoice_date":date.today().isoformat(),"invoice_series":"IV","invoice_number":"JP-1","amount":500,
+        }])
+        managed=special.list_managed({})
+        self.assertEqual(len(managed),3)
+        self.assertEqual([row["status"] for row in managed],["pending","lost","po"])
+        self.assertEqual(special.list_management({"status":"unmanaged"}),[])
+
+    def test_dashboard_period_uses_quote_date_for_pending_and_po_date_for_po(self)->None:
+        preview=imports_manager.preview("standard",standard_book(),"daily.xlsx",self.user)
+        imports_manager.confirm("standard",preview["token"],self.user)
+        quote=next(row for row in database.list_quotes({}) if row["folio"]=="QT-100")
+        po_day=(date.today()-timedelta(days=1)).isoformat()
+        database.update_quote(quote["id"],"po","","","email",False,None,None,self.user,[{
+            "invoice_date":po_day,"invoice_series":"IV","invoice_number":"USD-1","amount":6100,
+        }])
+        previous=database.dashboard(start=po_day,end=po_day)
+        current=database.dashboard(start=date.today().isoformat(),end=date.today().isoformat())
+        self.assertEqual(previous["counts"]["po"],1)
+        self.assertEqual(previous["counts"]["pending"],0)
+        self.assertEqual(current["counts"]["po"],0)
+        self.assertEqual(current["counts"]["pending"],1)
+
+    def test_unmatched_distributor_is_logged_and_details_keep_code(self)->None:
+        preview=imports_manager.preview("standard",standard_book(),"daily.xlsx",self.user)
+        imports_manager.confirm("standard",preview["token"],self.user)
+        with database.connect() as db:
+            unmatched=db.execute("SELECT company_name,occurrences FROM distributor_unmatched WHERE normalized_name=?",("distributor sa",)).fetchone()
+        self.assertIsNotNone(unmatched)
+        self.assertEqual(unmatched["company_name"],"DISTRIBUTOR SA")
+        javascript=(PROJECT_DIR/"static"/"app.js").read_text(encoding="utf-8")
+        self.assertIn("q.distributor_code||t('no_code')",javascript)
 
 
 if __name__=="__main__": unittest.main()

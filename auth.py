@@ -84,11 +84,6 @@ def initialize() -> None:
             db.execute("UPDATE users SET is_manager=1 WHERE username='takujiyamada'")
         except Exception:
             pass
-            db.execute(
-                """INSERT OR IGNORE INTO users(username,display_name,role,agent_name,created_at,updated_at)
-                VALUES(?,?,?,?,?,?)""",
-                (username, name, role, agent, now, now),
-            )
 
 
 def _hash_password(password: str, salt_hex: str | None = None) -> tuple[str, str]:

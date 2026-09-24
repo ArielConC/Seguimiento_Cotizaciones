@@ -14,12 +14,13 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import landscape, letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
+from reportlab.pdfgen import canvas as pdfcanvas
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 
 NAVY=colors.HexColor("#0B2039"); BLUE=colors.HexColor("#0877C9"); GREEN=colors.HexColor("#0C9A70")
 RED=colors.HexColor("#CC4056"); ORANGE=colors.HexColor("#EE8A1C"); MUTED=colors.HexColor("#657689")
-LIGHT=colors.HexColor("#F3F6F9"); LINE=colors.HexColor("#DCE4EC")
+PURPLE=colors.HexColor("#7B4BB7"); LIGHT=colors.HexColor("#F3F6F9"); LINE=colors.HexColor("#DCE4EC")
 
 TEXT={
     "en":{
@@ -28,6 +29,7 @@ TEXT={
         "summary":"Period summary","added":"Quotations added","reviewed":"Quotations reviewed",
         "status":"Status changes","po":"Converted to PO","financial":"Financial summary",
         "pending":"Pending quotation total","po_quoted":"Quoted value converted to PO","po_final":"Final PO total","variance":"Variance",
+        "conversion_rates":"Conversion rates","conversion_count":"By resolved quotation count","conversion_value":"By quoted value",
         "losses":"Lost quotations by reason","no_losses":"No quotations were marked Lost during this period.",
         "po_detail":"QT to PO conversions","no_po":"No quotations were converted to PO during this period.",
         "quotation":"Quotation","customer":"End User","po_date":"PO date","quoted":"Quoted total","final_po":"Final PO","invoice_count":"Invoices","reason":"Loss reason","date":"Date",
@@ -39,6 +41,7 @@ TEXT={
         "summary":"Resumen del periodo","added":"Cotizaciones agregadas","reviewed":"Cotizaciones revisadas",
         "status":"Cambios de estatus","po":"Convertidas a PO","financial":"Resumen financiero",
         "pending":"Total de cotizaciones pendientes","po_quoted":"Valor cotizado convertido a PO","po_final":"Total final de PO","variance":"Diferencia",
+        "conversion_rates":"Tasas de conversión","conversion_count":"Por cantidad de cotizaciones resueltas","conversion_value":"Por valor cotizado",
         "losses":"Cotizaciones perdidas por motivo","no_losses":"No se marcaron cotizaciones como perdidas durante este periodo.",
         "po_detail":"Conversiones de QT a PO","no_po":"No hubo conversiones a PO durante este periodo.",
         "quotation":"Cotización","customer":"Usuario final","po_date":"Fecha de PO","quoted":"Total cotizado","final_po":"PO final","invoice_count":"Facturas","reason":"Motivo de pérdida","date":"Fecha",
@@ -101,38 +104,258 @@ def _po_chart(data: dict[str,Any]) -> Drawing:
     return drawing
 
 
-def build_report_pdf(data: dict[str,Any], target: Path, language: str = "en") -> bytes:
-    language=language if language in TEXT else "en"; labels=TEXT[language]; styles=_styles(); currency=data.get("currency","USD")
-    target.parent.mkdir(parents=True,exist_ok=True); buffer=BytesIO(); document=SimpleDocTemplate(buffer,pagesize=landscape(letter),leftMargin=.45*inch,rightMargin=.45*inch,topMargin=.42*inch,bottomMargin=.42*inch,title=labels["title"],author="NT TOOL")
+def _build_report_pdf_compact(data: dict[str,Any], target: Path, language: str = "en") -> bytes:
+    language=language if language in TEXT else "en"; labels=TEXT[language]; currency=data.get("currency","USD")
+    es=language=="es"; width,height=landscape(letter); margin=24; buffer=BytesIO(); c=pdfcanvas.Canvas(buffer,pagesize=(width,height))
+    c.setTitle(labels["special_title"] if data.get("workspace")=="special" else labels["title"]); c.setAuthor("NT TOOL")
+
+    def txt(value:Any,limit:int=80)->str:
+        clean=" ".join(str(value or "-").replace("–","-").replace("—","-").split())
+        return clean if len(clean)<=limit else clean[:max(1,limit-3)]+"..."
+
+    def box(x:float,y:float,w:float,h:float,title:str,accent=BLUE)->None:
+        c.setFillColor(colors.white); c.setStrokeColor(LINE); c.roundRect(x,y,w,h,7,fill=1,stroke=1)
+        c.setFillColor(accent); c.roundRect(x,y+h-24,w,24,7,fill=1,stroke=0); c.rect(x,y+h-24,w,12,fill=1,stroke=0)
+        c.setFillColor(colors.white); c.setFont("Helvetica-Bold",8); c.drawString(x+9,y+h-16,txt(title,34).upper())
+
+    def line(x:float,y:float,label:str,value:str,color=NAVY)->None:
+        c.setFillColor(MUTED); c.setFont("Helvetica",6.7); c.drawString(x,y,txt(label,27))
+        c.setFillColor(color); c.setFont("Helvetica-Bold",7.2); c.drawRightString(x+162,y,txt(value,28))
+
+    def count_value(item:dict[str,Any])->str:
+        return f"{int(item.get('count') or 0)} | {_money(item.get('value'),currency)}"
+
+    c.setFillColor(NAVY); c.rect(0,height-15,width,15,fill=1,stroke=0)
     title=labels["special_title"] if data.get("workspace")=="special" else labels["title"]
-    agent=data.get("agent") or ("Todos" if language=="es" else "All agents"); generated=data.get("generated_by") or "—"; scope=labels["team"] if data.get("scope")=="all" else labels["my"]
-    story=[Paragraph(title,styles["title"]),Paragraph(f"{labels['period']}: {escape(data['start_date'])} – {escape(data['end_date'])} &nbsp;&nbsp;|&nbsp;&nbsp; {labels['agent']}: {escape(str(agent))} &nbsp;&nbsp;|&nbsp;&nbsp; {labels['generated_by']}: {escape(str(generated))} &nbsp;&nbsp;|&nbsp;&nbsp; {labels['scope']}: {scope}",styles["subtitle"]),Spacer(1,12),Paragraph(labels["summary"],styles["section"]),
-           _metric_table([(data["new_quotes"],labels["added"]),(data["quotes_reviewed"],labels["reviewed"]),(data["status_changes"],labels["status"]),(data["po_changes"],labels["po"])],styles),
-           Paragraph(labels["financial"],styles["section"]),_metric_table([(_money(data["pending_value"],currency),labels["pending"]),(_money(data["po_quoted_value"],currency),labels["po_quoted"]),(_money(data["po_value"],currency),labels["po_final"]),(_money(float(data["po_value"])-float(data["po_quoted_value"]),currency),labels["variance"])],styles),
-           Paragraph(labels["losses"],styles["section"]),_loss_chart(data,labels),Paragraph(labels["po_detail"],styles["section"]),_po_chart(data)]
-    po_rows=data.get("po_rows",[])
-    if po_rows:
-        rows=[[Paragraph(labels[k],styles["header"]) for k in ("quotation","customer","po_date","invoice_count","quoted","final_po","variance")]]
-        for row in po_rows: rows.append([Paragraph(escape(str(row.get("folio",""))),styles["small"]),Paragraph(escape(str(row.get("receptor",""))),styles["small"]),Paragraph(escape(str(row.get("po_date",""))),styles["small"]),Paragraph(escape(str(row.get("invoice_count",0))),styles["small"]),Paragraph(_money(row.get("quoted_total"),currency),styles["small"]),Paragraph(_money(row.get("po_total"),currency),styles["small"]),Paragraph(_money(row.get("variance"),currency),styles["small"])])
-        story.append(_styled_table(rows,[1*inch,2.25*inch,.9*inch,.7*inch,1.3*inch,1.3*inch,1.3*inch]))
-    else: story.append(Paragraph(labels["no_po"],styles["body"]))
-    story.append(Paragraph(labels["losses"],styles["section"])); lost=data.get("lost_rows",[])
-    if lost:
-        rows=[[Paragraph(labels[k],styles["header"]) for k in ("quotation","customer","date","reason")]]
-        for row in lost: rows.append([Paragraph(escape(str(row.get("folio",""))),styles["small"]),Paragraph(escape(str(row.get("receptor",""))),styles["small"]),Paragraph(escape(str(row.get("date",""))),styles["small"]),Paragraph(escape(str(row.get("reason",""))),styles["small"])])
-        story.append(_styled_table(rows,[1.2*inch,3.1*inch,1.1*inch,4*inch]))
-    else: story.append(Paragraph(labels["no_losses"],styles["body"]))
-    story.append(Paragraph(labels["review_detail"],styles["section"])); reviewed=data.get("reviewed",[])
-    if reviewed:
-        rows=[[Paragraph(labels[k],styles["header"]) for k in ("quotation","customer","quoted","final_po","activity")]]
-        for quote in reviewed:
-            activity=[]
-            for event in quote.get("events",[]):
-                if event.get("event_type")=="review_saved": continue
-                note=escape(str(event.get("note") or event.get("event_type") or "")); who=escape(str(event.get("user_name") or "")); activity.append(f"<b>{who}</b> {str(event.get('created_at',''))[11:16]}: {note}")
-            rows.append([Paragraph(escape(str(quote.get("folio",""))),styles["small"]),Paragraph(escape(str(quote.get("receptor",""))),styles["small"]),Paragraph(_money(quote.get("total"),currency),styles["small"]),Paragraph(_money(quote.get("po_total"),currency) if quote.get("po_total") else "—",styles["small"]),Paragraph("<br/>".join(activity) or "—",styles["small"])])
-        story.append(_styled_table(rows,[1.1*inch,2.2*inch,1.1*inch,1.1*inch,4*inch]))
-    document.build(story,onFirstPage=_page,onLaterPages=_page); content=buffer.getvalue(); target.write_bytes(content); return content
+    c.setFillColor(NAVY); c.setFont("Helvetica-Bold",18); c.drawString(margin,574,txt(title,62))
+    c.setFillColor(BLUE); c.setFont("Helvetica-Bold",9); c.drawRightString(width-margin,576,f"{currency}  |  {'SPECIAL' if data.get('workspace')=='special' else 'FOLLOW UP'}")
+    agent=data.get("agent") or ("Todos los agentes" if es else "All agents"); scope=labels["team"] if data.get("scope")=="all" else labels["my"]
+    generated_at=str(data.get("generated_at") or "").replace("T"," ") or "-"
+    meta=f"{labels['period']}: {data.get('start_date','-')} - {data.get('end_date','-')}   |   {labels['agent']}: {agent}   |   {labels['scope']}: {scope}"
+    c.setFillColor(MUTED); c.setFont("Helvetica",7.5); c.drawString(margin,558,txt(meta,145))
+    c.drawRightString(width-margin,546,txt(f"{labels['generated_by']}: {data.get('generated_by','—')}  |  {generated_at}",85))
+
+    conversion=data.get("conversion_rate"); conversion_text="N/A" if conversion is None else f"{float(conversion):.1f}%"
+    kpis=[
+        (labels["pending"],_money(data.get("pending_value"),currency),f"{int(data.get('pending_count') or 0)} {('cotizaciones' if es else 'quotations')}",ORANGE),
+        (labels["added"],str(int(data.get("new_quotes") or 0)),_money(data.get("new_value"),currency),BLUE),
+        (labels["reviewed"],str(int(data.get("quotes_reviewed") or 0)),"Únicas" if es else "Unique quotations",BLUE),
+        (labels["po"],str(int(data.get("po_changes") or 0)),_money(data.get("po_value"),currency),GREEN),
+        ("Perdidas" if es else "Lost",str(int(data.get("lost_changes") or 0)),_money(data.get("lost_value"),currency),PURPLE),
+        ("Conversión" if es else "Conversion",conversion_text,"PO / (PO + Lost)",GREEN),
+    ]
+    gap=6; card_w=(width-2*margin-gap*5)/6; card_y=476; card_h=62
+    for index,(label,primary,secondary,accent) in enumerate(kpis):
+        x=margin+index*(card_w+gap); c.setFillColor(LIGHT); c.setStrokeColor(LINE); c.roundRect(x,card_y,card_w,card_h,6,fill=1,stroke=1)
+        c.setFillColor(accent); c.rect(x,card_y+card_h-4,card_w,4,fill=1,stroke=0)
+        c.setFillColor(MUTED); c.setFont("Helvetica-Bold",6.2); c.drawCentredString(x+card_w/2,card_y+45,txt(label,24).upper())
+        c.setFillColor(NAVY); c.setFont("Helvetica-Bold",12 if index==0 else 15); c.drawCentredString(x+card_w/2,card_y+25,txt(primary,22))
+        c.setFillColor(MUTED); c.setFont("Helvetica",6.2); c.drawCentredString(x+card_w/2,card_y+10,txt(secondary,27))
+
+    block_gap=8; block_w=(width-2*margin-block_gap*3)/4; block_y=300; block_h=164
+    priorities=data.get("priorities") or []; max_priority=max([float(row.get("value") or 0) for row in priorities] or [1])
+    x=margin; box(x,block_y,block_w,block_h,"Pipeline por prioridad" if es else "Pipeline by priority",BLUE)
+    priority_colors={"S":RED,"A":ORANGE,"B":BLUE,"C":MUTED}
+    for index,priority in enumerate("SABC"):
+        row=next((item for item in priorities if item.get("priority")==priority),{"count":0,"value":0}); y=block_y+112-index*27
+        c.setFillColor(priority_colors[priority]); c.setFont("Helvetica-Bold",8); c.drawString(x+9,y+5,priority)
+        c.setFillColor(LIGHT); c.roundRect(x+24,y,block_w-95,10,3,fill=1,stroke=0)
+        bar=(block_w-95)*(float(row.get("value") or 0)/max_priority if max_priority else 0); c.setFillColor(priority_colors[priority]); c.roundRect(x+24,y,max(1,bar),10,3,fill=1,stroke=0)
+        c.setFillColor(NAVY); c.setFont("Helvetica-Bold",6.4); c.drawRightString(x+block_w-8,y+3,f"{int(row.get('count') or 0)} | {_money(row.get('value'),currency)}")
+
+    x+=block_w+block_gap; box(x,block_y,block_w,block_h,"Resultados del periodo" if es else "Period results",GREEN)
+    quoted=float(data.get("po_quoted_value") or 0); po_value=float(data.get("po_value") or 0); variance=po_value-quoted
+    variance_pct=(variance/quoted*100) if quoted else None; average=data.get("average_po_days")
+    result_lines=[
+        ("Valor cotizado convertido" if es else "Converted quoted value",_money(quoted,currency)),(labels["po_final"],_money(po_value,currency)),
+        (labels["variance"],_money(variance,currency)),
+        ("Diferencia %" if es else "Variance %","N/A" if variance_pct is None else f"{variance_pct:+.1f}%"),
+        ("Promedio QT a PO" if es else "Average QT to PO","N/A" if average is None else f"{float(average):.1f} {('días' if es else 'days')}")]
+    for index,(label,value) in enumerate(result_lines): line(x+9,block_y+118-index*23,label,value,GREEN if index in {1,2} and variance>=0 else NAVY)
+
+    x+=block_w+block_gap; box(x,block_y,block_w,block_h,"Alertas de seguimiento" if es else "Follow-up alerts",ORANGE)
+    alerts=data.get("alerts") or {}; alert_lines=[
+        ("9-14 días sin seguimiento" if es else "9-14 days without follow-up",alerts.get("followup_9_14",{}),ORANGE),
+        ("15+ días sin seguimiento" if es else "15+ days without follow-up",alerts.get("followup_15_plus",{}),RED),
+        ("Más de 90 días" if es else "More than 90 days",alerts.get("stale_90_plus",{}),PURPLE),
+        ("PO sin fecha" if es else "PO date missing",alerts.get("po_date_missing",{}),RED)]
+    for index,(label,item,color) in enumerate(alert_lines): line(x+9,block_y+118-index*29,label,count_value(item) if index<3 else str(int(item.get("count") or 0)),color)
+    c.setFillColor(MUTED); c.setFont("Helvetica-Oblique",5.7); c.drawString(x+9,block_y+8,txt("Categorías independientes; pueden coincidir." if es else "Independent categories; quotations may overlap.",45))
+
+    x+=block_w+block_gap; box(x,block_y,block_w,block_h,"Pérdidas" if es else "Losses",PURPLE)
+    loss_items=sorted((data.get("loss_breakdown_detail") or {}).items(),key=lambda item:(-float(item[1].get("value") or 0),-int(item[1].get("count") or 0)))
+    if len(loss_items)>4:
+        other={"count":sum(int(item[1].get("count") or 0) for item in loss_items[3:]),"value":sum(float(item[1].get("value") or 0) for item in loss_items[3:])}
+        loss_items=loss_items[:3]+[("Otros" if es else "Other",other)]
+    if loss_items:
+        for index,(reason,item) in enumerate(loss_items[:4]): line(x+9,block_y+118-index*27,reason,count_value(item),PURPLE)
+    else:
+        c.setFillColor(MUTED); c.setFont("Helvetica",7); c.drawCentredString(x+block_w/2,block_y+78,"Sin pérdidas en el periodo" if es else "No losses during this period")
+
+    c.setFillColor(NAVY); c.setFont("Helvetica-Bold",9); c.drawString(margin,284,"OPERACIONES QUE REQUIEREN ACCIÓN" if es else "QUOTATIONS REQUIRING ACTION")
+    table_y=266; columns=[("Prioridad" if es else "Priority",40),("Cotización" if es else "Quotation",82),("Distrib.",58),("Usuario final" if es else "End User",192),("Importe" if es else "Amount",104),("Días" if es else "Days",54),("Agente NT",214)]
+    c.setFillColor(NAVY); c.rect(margin,table_y-16,sum(w for _,w in columns),16,fill=1,stroke=0); cursor=margin
+    c.setFillColor(colors.white); c.setFont("Helvetica-Bold",6.5)
+    for label,col_w in columns: c.drawString(cursor+4,table_y-11,txt(label,24)); cursor+=col_w
+    action_rows=list(data.get("action_rows") or [])[:10]
+    if action_rows:
+        for index,row in enumerate(action_rows):
+            y=table_y-16-(index+1)*14; c.setFillColor(colors.white if index%2==0 else LIGHT); c.rect(margin,y,sum(w for _,w in columns),14,fill=1,stroke=0)
+            values=[row.get("priority"),row.get("folio"),row.get("distributor_code"),row.get("end_user"),_money(row.get("amount"),currency),row.get("days_since_activity"),row.get("nt_agent")]
+            cursor=margin; c.setFillColor(NAVY); c.setFont("Helvetica",6.4); limits=[5,15,10,38,22,6,38]
+            for value,(_,col_w),limit in zip(values,columns,limits): c.drawString(cursor+4,y+4,txt(value,limit)); cursor+=col_w
+        remaining=int(data.get("action_remaining") or 0)
+        if remaining:
+            c.setFillColor(RED); c.setFont("Helvetica-Bold",6.5); c.drawRightString(width-margin,106,f"{remaining} "+("operaciones adicionales requieren atención" if es else "additional quotations require attention"))
+    else:
+        c.setFillColor(LIGHT); c.rect(margin,table_y-48,sum(w for _,w in columns),32,fill=1,stroke=0); c.setFillColor(GREEN); c.setFont("Helvetica-Bold",8)
+        c.drawCentredString(width/2,table_y-36,"No hay acciones urgentes en el periodo." if es else "No urgent actions for this period.")
+
+    due=(alerts.get("followup_15_plus") or {}); rate="N/A" if conversion is None else f"{float(conversion):.1f}%"
+    conclusions=(
+        [f"Pipeline pendiente: {_money(data.get('pending_value'),currency)} en {int(data.get('pending_count') or 0)} cotizaciones.",
+         f"Resultado del periodo: {_money(data.get('po_value'),currency)} convertido a PO; conversión {rate}.",
+         f"Atención: {int(due.get('count') or 0)} cotizaciones por {_money(due.get('value'),currency)} llevan 15 días o más sin seguimiento."]
+        if es else
+        [f"Pending pipeline: {_money(data.get('pending_value'),currency)} across {int(data.get('pending_count') or 0)} quotations.",
+         f"Period result: {_money(data.get('po_value'),currency)} converted to PO; conversion {rate}.",
+         f"Attention: {int(due.get('count') or 0)} quotations worth {_money(due.get('value'),currency)} have 15+ days without follow-up."]
+    )
+    c.setStrokeColor(LINE); c.line(margin,86,width-margin,86); c.setFillColor(NAVY); c.setFont("Helvetica-Bold",7.3)
+    for index,conclusion in enumerate(conclusions): c.drawString(margin,72-index*12,txt(conclusion,145))
+    c.setStrokeColor(LINE); c.line(margin,24,width-margin,24); c.setFillColor(MUTED); c.setFont("Helvetica",6.5)
+    c.drawString(margin,12,"NT TOOL - Sales follow-up"); c.drawRightString(width-margin,12,"1 / 1")
+    c.showPage(); c.save(); content=buffer.getvalue(); target.parent.mkdir(parents=True,exist_ok=True); target.write_bytes(content); return content
+
+
+def build_report_pdf(data: dict[str,Any], target: Path, language: str = "en") -> bytes:
+    """Build the one-page management report using the approved NT visual template."""
+    language=language if language in TEXT else "en"; labels=TEXT[language]; currency=data.get("currency","USD"); es=language=="es"
+    width,height=landscape(letter); margin=24; buffer=BytesIO(); c=pdfcanvas.Canvas(buffer,pagesize=(width,height))
+    page_bg=colors.HexColor("#F5F7F9"); ink=colors.HexColor("#111820"); steel=colors.HexColor("#8093A3")
+    panel_green=colors.HexColor("#7FB497"); panel_orange=colors.HexColor("#D7A35E")
+    kpi_colors=[colors.HexColor("#F4BD77"),colors.HexColor("#8FC7E5"),colors.HexColor("#B8C2CB"),
+                colors.HexColor("#76D4B1"),colors.HexColor("#E699A5"),colors.HexColor("#7CB68F")]
+    c.setTitle(labels["special_title"] if data.get("workspace")=="special" else labels["title"]); c.setAuthor("NT TOOL")
+    c.setFillColor(page_bg); c.rect(0,0,width,height,fill=1,stroke=0)
+
+    def txt(value:Any,limit:int=80)->str:
+        clean=" ".join(str(value or "-").replace("–","-").replace("—","-").replace("→"," to ").split())
+        return clean if len(clean)<=limit else clean[:max(1,limit-3)]+"..."
+
+    def outline(x:float,y:float,w:float,h:float,color,title:str|None=None,radius:float=12)->None:
+        c.setFillColor(page_bg); c.setStrokeColor(color); c.setLineWidth(2); c.roundRect(x,y,w,h,radius,fill=1,stroke=1)
+        if title:
+            c.setFillColor(ink); c.setFont("Helvetica-Bold",8.5); c.drawString(x+14,y+h-19,txt(title,50).upper())
+
+    def pair(x:float,right:float,y:float,label:str,value:str,color=ink,font_size:float=7)->None:
+        c.setFillColor(ink); c.setFont("Helvetica-Bold",font_size); c.drawString(x,y,txt(label,38))
+        c.setFillColor(color); c.drawRightString(right,y,txt(value,38))
+
+    def alert_value(item:dict[str,Any])->str:
+        return f"{int(item.get('count') or 0)} / {_money(item.get('value'),currency)}"
+
+    title=labels["special_title"] if data.get("workspace")=="special" else labels["title"]
+    outline(margin,548,602,47,steel,radius=6)
+    c.setFillColor(ink); c.setFont("Helvetica-Bold",17); c.drawString(margin+12,574,txt(title,58).upper())
+    agent=data.get("agent") or ("Todos los agentes" if es else "All agents"); scope=labels["team"] if data.get("scope")=="all" else labels["my"]
+    c.setFont("Helvetica-Oblique",7.4); c.drawString(margin+12,559,txt(f"{labels['period']}: {data.get('start_date','-')} - {data.get('end_date','-')} | {currency} | {labels['agent']}: {agent}",105))
+    c.setFont("Helvetica",6.3); c.setFillColor(steel)
+    c.drawRightString(margin+590,551,txt(f"{labels['scope']}: {scope} | {labels['generated_by']}: {data.get('generated_by','-')} | {str(data.get('generated_at') or '-').replace('T',' ')}",120))
+
+    logo_reference=Path(__file__).resolve().parent/"Medios"/"Plantilla Reporte 2.jpg"
+    if logo_reference.exists():
+        c.saveState(); clip=c.beginPath(); clip.rect(640,538,137,61); c.clipPath(clip,stroke=0,fill=0)
+        c.drawImage(str(logo_reference),0,0,width=width,height=height,preserveAspectRatio=False,mask="auto"); c.restoreState()
+    else:
+        c.setFillColor(BLUE); c.setFont("Helvetica-BoldOblique",27); c.drawCentredString(706,562,"NT")
+
+    conversion=data.get("conversion_rate"); conversion_text="N/A" if conversion is None else f"{float(conversion):.1f}%"
+    kpis=[
+        ("Pending",_money(data.get("pending_value"),currency),f"{int(data.get('pending_count') or 0)} {('cotizaciones' if es else 'quotations')}"),
+        ("Nuevas" if es else "New",str(int(data.get("new_quotes") or 0)),_money(data.get("new_value"),currency)),
+        ("Revisadas" if es else "Reviewed",str(int(data.get("quotes_reviewed") or 0)),"Únicas" if es else "Unique quotations"),
+        ("PO",str(int(data.get("po_changes") or 0)),_money(data.get("po_value"),currency)),
+        ("Perdidas" if es else "Lost",str(int(data.get("lost_changes") or 0)),_money(data.get("lost_value"),currency)),
+        ("Conversión" if es else "Conversion",conversion_text,"PO / (PO + Lost)"),
+    ]
+    gap=8; card_w=(width-2*margin-gap*5)/6; card_y=451; card_h=82
+    for index,(label,primary,secondary) in enumerate(kpis):
+        x=margin+index*(card_w+gap); outline(x,card_y,card_w,card_h,kpi_colors[index],radius=14)
+        c.setFillColor(ink); c.setFont("Helvetica-Bold",7.8); c.drawCentredString(x+card_w/2,card_y+59,txt(label,22).upper())
+        c.setFont("Helvetica-Bold",13 if index==0 else 16); c.drawCentredString(x+card_w/2,card_y+31,txt(primary,22))
+        c.setFillColor(steel); c.setFont("Helvetica",6.2); c.drawCentredString(x+card_w/2,card_y+13,txt(secondary,28))
+
+    left_x=margin; left_w=315; right_x=349; right_w=419; row_h=100
+    priorities=data.get("priorities") or []; max_priority=max([float(row.get("value") or 0) for row in priorities] or [1])
+    outline(left_x,338,left_w,row_h,panel_green,"Pipeline por prioridad" if es else "Pipeline by priority")
+    priority_colors={"S":RED,"A":ORANGE,"B":colors.HexColor("#3B9BC7"),"C":steel}
+    for index,priority in enumerate("SABC"):
+        row=next((item for item in priorities if item.get("priority")==priority),{"count":0,"value":0}); y=391-index*16
+        c.setFillColor(ink); c.setFont("Helvetica-Bold",7.2); c.drawString(left_x+15,y,priority)
+        c.setFont("Helvetica",6.2); c.drawString(left_x+30,y,f"{int(row.get('count') or 0)} / {_money(row.get('value'),currency)}")
+        bar_x=left_x+132; bar_w=left_w-148; c.setFillColor(colors.HexColor("#E4EAEE")); c.roundRect(bar_x,y-2,bar_w,8,2,fill=1,stroke=0)
+        amount=float(row.get("value") or 0); c.setFillColor(priority_colors[priority]); c.roundRect(bar_x,y-2,max(1,bar_w*(amount/max_priority if max_priority else 0)),8,2,fill=1,stroke=0)
+
+    outline(right_x,338,right_w,row_h,panel_green,"Resultados por periodos" if es else "Period results")
+    quoted=float(data.get("po_quoted_value") or 0); po_value=float(data.get("po_value") or 0); variance=po_value-quoted
+    variance_pct=(variance/quoted*100) if quoted else None; average=data.get("average_po_days")
+    result_rows=[
+        ("QT convertido" if es else "Quoted value converted",_money(quoted,currency)),
+        ("PO final" if es else "Final PO",_money(po_value,currency)),
+        ("Diferencia QT-PO" if es else "QT-PO variance",f"{_money(variance,currency)} / {'N/A' if variance_pct is None else f'{variance_pct:+.1f}%'}"),
+        ("Tiempo promedio QT a PO" if es else "Average QT to PO","N/A" if average is None else f"{float(average):.1f} {('días' if es else 'days')}")]
+    for index,(label,value) in enumerate(result_rows): pair(right_x+24,right_x+right_w-18,394-index*17,label,value,GREEN if index==1 else ink,7.3)
+
+    alerts=data.get("alerts") or {}; outline(left_x,225,left_w,row_h,panel_green,"Alertas de seguimiento" if es else "Follow-up alerts")
+    alert_rows=[
+        ("9-14 días" if es else "9-14 days",alerts.get("followup_9_14",{}),ORANGE),
+        ("15+ días" if es else "15+ days",alerts.get("followup_15_plus",{}),RED),
+        ("90+ días" if es else "90+ days",alerts.get("stale_90_plus",{}),PURPLE),
+        ("PO sin fecha" if es else "PO date missing",alerts.get("po_date_missing",{}),RED)]
+    for index,(label,item,color) in enumerate(alert_rows):
+        value=str(int(item.get("count") or 0)) if index==3 else alert_value(item); pair(left_x+24,left_x+left_w-18,279-index*17,label,value,color,7.3)
+
+    outline(right_x,225,right_w,row_h,panel_green,"Pérdidas" if es else "Losses")
+    loss_items=sorted((data.get("loss_breakdown_detail") or {}).items(),key=lambda item:(-float(item[1].get("value") or 0),-int(item[1].get("count") or 0)))
+    if len(loss_items)>3:
+        other={"count":sum(int(item[1].get("count") or 0) for item in loss_items[2:]),"value":sum(float(item[1].get("value") or 0) for item in loss_items[2:])}
+        loss_items=loss_items[:2]+[("Otros" if es else "Other",other)]
+    if loss_items:
+        for index,(reason,item) in enumerate(loss_items[:3]): pair(right_x+24,right_x+right_w-18,279-index*17,reason,alert_value(item),PURPLE,7.3)
+        c.setFillColor(ink); c.setFont("Helvetica-Bold",6.6); c.drawString(right_x+24,230,txt(("PRINCIPAL MOTIVO: " if es else "MAIN REASON: ")+str(loss_items[0][0]),58))
+    else:
+        c.setFillColor(steel); c.setFont("Helvetica",7.3); c.drawString(right_x+24,267,"Sin pérdidas en el periodo" if es else "No losses during this period")
+
+    outline(margin,70,width-2*margin,142,panel_orange,"Operaciones que requieren atención" if es else "Quotations requiring action")
+    action_rows=list(data.get("action_rows") or [])[:10]; remaining=int(data.get("action_remaining") or 0)
+    if remaining:
+        c.setFillColor(RED); c.setFont("Helvetica-Bold",6); c.drawRightString(width-margin-14,194,f"+{remaining} "+("adicionales" if es else "additional"))
+    columns=[("Pri.",42),("QT",68),("Distrib.",65),("End User",205),(currency,86),("Días sin seguimiento" if es else "Days without follow-up",104),("Agente" if es else "Agent",146)]
+    cursor=margin+14; c.setFillColor(ink); c.setFont("Helvetica-Bold",6.2)
+    for label,col_w in columns: c.drawString(cursor,176,txt(label,24)); cursor+=col_w
+    if action_rows:
+        for index,row in enumerate(action_rows):
+            y=163-index*9.3; values=[row.get("priority"),row.get("folio"),row.get("distributor_code"),row.get("end_user"),_money(row.get("amount"),currency),row.get("days_since_activity"),row.get("nt_agent")]
+            cursor=margin+14; c.setFillColor(ink); c.setFont("Helvetica",5.8); limits=[4,13,10,38,20,6,26]
+            for value,(_,col_w),limit in zip(values,columns,limits): c.drawString(cursor,y,txt(value,limit)); cursor+=col_w
+    else:
+        c.setFillColor(panel_green); c.setFont("Helvetica-Bold",8); c.drawCentredString(width/2,135,"No hay acciones urgentes en el periodo." if es else "No urgent actions for this period.")
+
+    due=alerts.get("followup_15_plus") or {}; rate="N/A" if conversion is None else f"{float(conversion):.1f}%"
+    conclusions=(
+        [f"Pipeline pendiente: {_money(data.get('pending_value'),currency)} en {int(data.get('pending_count') or 0)} cotizaciones.",
+         f"Resultado: {_money(data.get('po_value'),currency)} convertido a PO; conversión {rate}.",
+         f"Atención: {int(due.get('count') or 0)} cotizaciones por {_money(due.get('value'),currency)} llevan 15+ días sin seguimiento."]
+        if es else
+        [f"Pending pipeline: {_money(data.get('pending_value'),currency)} across {int(data.get('pending_count') or 0)} quotations.",
+         f"Result: {_money(data.get('po_value'),currency)} converted to PO; conversion {rate}.",
+         f"Attention: {int(due.get('count') or 0)} quotations worth {_money(due.get('value'),currency)} have 15+ days without follow-up."])
+    c.setFillColor(ink); c.setFont("Helvetica-Bold",6.6)
+    for index,conclusion in enumerate(conclusions): c.drawString(margin,52-index*10,txt(conclusion,145))
+    c.setStrokeColor(colors.HexColor("#D6DDE2")); c.line(margin,18,width-margin,18); c.setFillColor(steel); c.setFont("Helvetica",5.8)
+    c.drawString(margin,8,"NT TOOL - Sales follow-up"); c.drawRightString(width-margin,8,"1 / 1")
+    c.showPage(); c.save(); content=buffer.getvalue(); target.parent.mkdir(parents=True,exist_ok=True); target.write_bytes(content); return content
 
 
 def _styled_table(rows:list[list[Any]],widths:list[float])->Table:
@@ -146,6 +369,12 @@ def build_report_xlsx(data: dict[str,Any], target: Path, language: str = "en") -
     summary.append([title]); summary.append([labels["period"],data["start_date"],data["end_date"]]); summary.append([labels["generated_by"],data.get("generated_by","")]); summary.append([])
     summary.append([labels["summary"],labels["added"],labels["reviewed"],labels["status"],labels["po"]]); summary.append(["",data["new_quotes"],data["quotes_reviewed"],data["status_changes"],data["po_changes"]]); summary.append([])
     summary.append([labels["financial"],labels["pending"],labels["po_quoted"],labels["po_final"],labels["variance"]]); summary.append([currency,data["pending_value"],data["po_quoted_value"],data["po_value"],float(data["po_value"])-float(data["po_quoted_value"])])
+    resolved_value=float(data.get("po_quoted_value") or 0)+float(data.get("lost_value") or 0)
+    value_conversion=(float(data.get("po_quoted_value") or 0)/resolved_value) if resolved_value else None
+    count_conversion=data.get("conversion_rate")
+    summary.append([]); summary.append([labels["conversion_rates"],labels["conversion_count"],labels["conversion_value"]])
+    summary.append(["",None if count_conversion is None else float(count_conversion)/100,value_conversion])
+    summary.cell(summary.max_row,2).number_format="0.0%"; summary.cell(summary.max_row,3).number_format="0.0%"
     po=workbook.create_sheet("PO"); po.append([labels["quotation"],labels["customer"],labels["po_date"],labels["invoice_count"],labels["quoted"],labels["final_po"],labels["variance"]])
     for row in data.get("po_rows",[]): po.append([row.get("folio"),row.get("receptor"),row.get("po_date"),row.get("invoice_count",0),row.get("quoted_total"),row.get("po_total"),row.get("variance")])
     lost=workbook.create_sheet("Perdidas" if language=="es" else "Lost"); lost.append([labels["quotation"],labels["customer"],labels["date"],labels["reason"]])
