@@ -641,7 +641,7 @@ async function renderMonthlyReport(){
   await loadMonthlyUsers();
   const start=$('#monthly-start').value;const end=$('#monthly-end').value;
   if(end<start)throw new Error(state.language==='es'?'La fecha final no puede ser anterior a la inicial.':'End date cannot be before start date.');
-  const params=new URLSearchParams({start,end,user:$('#monthly-user').value,result:$('#monthly-result').value});
+  const params=new URLSearchParams({start,end,user:$('#monthly-user').value,result:$('#monthly-result').value,status:$('#monthly-status').value});
   const data=await api(`${prefix()}/monthly-report?${params}`);const responses=data.responses||{yes:0,no:0,pending:0};
   const cards=[['yes',responses.yes,t('responded'),'responded'],['no',responses.no,t('no_response'),'no-response'],['pending',responses.pending,t('awaiting_response'),'awaiting'],['managed',data.managed_count,t('managed_quotes'),'managed']];
   $('#monthly-kpis').innerHTML=cards.map(([value,count,label,style])=>`<button type="button" class="monthly-kpi ${style}${$('#monthly-result').value===value?' active':''}" data-monthly-result="${value}"><strong>${Number(count||0)}</strong><span>${label}</span></button>`).join('');
@@ -653,9 +653,10 @@ async function renderMonthlyReport(){
 }
 $('#monthly-current').addEventListener('click',()=>{setMonthlyCurrentPeriod();renderMonthlyReport().catch(e=>toast(e.message,true));});
 $('#monthly-refresh').addEventListener('click',()=>renderMonthlyReport().catch(e=>toast(e.message,true)));
-$('#monthly-clear').addEventListener('click',()=>{setMonthlyCurrentPeriod();$('#monthly-user').value=state.me?.can_team_reports?'all':String(state.me?.id||'');$('#monthly-result').value='managed';renderMonthlyReport().catch(e=>toast(e.message,true));});
+$('#monthly-clear').addEventListener('click',()=>{setMonthlyCurrentPeriod();$('#monthly-user').value=state.me?.can_team_reports?'all':String(state.me?.id||'');$('#monthly-result').value='managed';$('#monthly-status').value='all';renderMonthlyReport().catch(e=>toast(e.message,true));});
 $('#monthly-user').addEventListener('change',()=>renderMonthlyReport().catch(e=>toast(e.message,true)));
 $('#monthly-result').addEventListener('change',()=>renderMonthlyReport().catch(e=>toast(e.message,true)));
+$('#monthly-status').addEventListener('change',()=>renderMonthlyReport().catch(e=>toast(e.message,true)));
 
 function setPreset(kind){const today=businessToday();let start=new Date(today);if(kind==='weekly'){const day=(today.getDay()+6)%7;start.setDate(today.getDate()-day);}if(kind==='monthly')start=new Date(`${state.calendar?.month_start||isoLocal(new Date(today.getFullYear(),today.getMonth(),1))}T12:00:00`);const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;if(kind!=='custom'){$('#report-start').value=iso(start);$('#report-end').value=iso(today);}} $$('.report-preset').forEach(b=>b.addEventListener('click',async()=>{setPreset(b.dataset.period);if(b.dataset.period!=='custom')await renderReport();}));$('#dashboard-report').addEventListener('click',()=>{setPreset('daily');navigate('reports');});
 function reportQuery(){return new URLSearchParams({start:$('#report-start').value,end:$('#report-end').value,scope:$('#report-scope').value,agent:$('#global-agent').value,language:state.language});}

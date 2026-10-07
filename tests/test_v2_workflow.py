@@ -379,7 +379,9 @@ class V2WorkflowTests(unittest.TestCase):
         self.assertNotIn("confirm(",javascript)
         self.assertIn('id="stale-warning"',html)
         self.assertIn('id="monthly-clear"',html)
+        self.assertIn('id="monthly-status"',html)
         self.assertIn("$('#monthly-clear').addEventListener",javascript)
+        self.assertIn("$('#monthly-status').addEventListener",javascript)
         self.assertIn('<option value="ja">',html)
         self.assertIn("Perfil de visualización",javascript)
         japanese=auth.update_preferences(self.user,"ja")
@@ -469,6 +471,15 @@ class V2WorkflowTests(unittest.TestCase):
         standard_month=database.monthly_activity("standard",today,today,self.user["id"])
         self.assertEqual(standard_month["responses"],{"yes":2,"no":0,"pending":0})
         self.assertEqual({row["folio"] for row in database.monthly_activity("standard",today,today,self.user["id"],"yes")["rows"]},{"QT-100","QTI-101"})
+        pending_month=database.monthly_activity("standard",today,today,self.user["id"],"managed","pending")
+        lost_month=database.monthly_activity("standard",today,today,self.user["id"],"managed","lost")
+        self.assertEqual((pending_month["managed_count"],lost_month["managed_count"]),(1,1))
+        self.assertEqual(pending_month["rows"][0]["folio"],"QT-100")
+        self.assertEqual(lost_month["rows"][0]["folio"],"QTI-101")
+        self.assertEqual(lost_month["responses"],{"yes":1,"no":0,"pending":0})
+        self.assertEqual(database.monthly_activity("standard",today,today,self.user["id"],"no","lost")["rows"],[])
+        with self.assertRaisesRegex(ValueError,"Invalid monthly report status filter"):
+            database.monthly_activity("standard",today,today,self.user["id"],"managed","closed")
 
         special_preview=imports_manager.preview("special",special_book(),"special.xlsx",self.user)
         imports_manager.confirm("special",special_preview["token"],self.user)
@@ -482,6 +493,9 @@ class V2WorkflowTests(unittest.TestCase):
         self.assertEqual(special_detail["effective_response"],"yes")
         special_month=database.monthly_activity("special",today,today,self.user["id"],"yes")
         self.assertEqual([row["quote_id"] for row in special_month["rows"]],[converted["id"]])
+        special_po=database.monthly_activity("special",today,today,self.user["id"],"managed","po")
+        self.assertEqual((special_po["status_filter"],special_po["managed_count"]),("po",1))
+        self.assertEqual(special_po["rows"][0]["quote_id"],converted["id"])
 
     def test_monthly_activity_keeps_one_hundred_events_and_one_unique_quote(self)->None:
         preview=imports_manager.preview("standard",standard_book(),"daily.xlsx",self.user)

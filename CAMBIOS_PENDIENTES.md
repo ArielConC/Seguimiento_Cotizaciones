@@ -1,6 +1,6 @@
 # Seguimiento de cambios
 
-Actualizado el 7 de octubre de 2026. La fase de facturas múltiples quedó implementada, migrada y validada. El reporte ejecutivo de una página y la corrección de Gestionadas/No Gestionadas ya se implementaron y validaron localmente; los apartados posteriores continúan como cambios pendientes hasta su implementación o despliegue. El nuevo modo Monthly Report basado en actividad de seguimiento quedó implementado y validado localmente. La clasificación acumulativa de respuestas para PO, Lost y Pending quedó implementada y validada localmente.
+Actualizado el 7 de octubre de 2026. La fase de facturas múltiples quedó implementada, migrada y validada. El reporte ejecutivo de una página y la corrección de Gestionadas/No Gestionadas ya se implementaron y validaron localmente; los apartados posteriores continúan como cambios pendientes hasta su implementación o despliegue. El nuevo modo Monthly Report basado en actividad de seguimiento quedó implementado y validado localmente. La clasificación acumulativa de respuestas para PO, Lost y Pending quedó implementada y validada localmente. El filtro por estado vigente de Monthly Report quedó implementado y validado localmente.
 
 ## Cambio implementado: modo Monthly Report por actividad
 
@@ -91,6 +91,36 @@ Actualizado el 7 de octubre de 2026. La fase de facturas múltiples quedó imple
 - [x] Probar PO y Lost con valores manuales anteriores `No hubo respuesta` o `En espera` y confirmar que ambas se clasifiquen como **Hubo respuesta**.
 - [x] Probar una respuesta positiva fuera del periodo y una nueva gestión dentro del periodo: la cotización debe entrar por la gestión del periodo y clasificarse como **Hubo respuesta** gracias a su historial.
 - [x] Conciliar los conteos y filtros en Follow Up Quotations USD y Special Quotations JPY, sin duplicar cotizaciones y sin modificar el historial existente.
+
+## Cambio implementado: filtro por estado vigente en Monthly Report
+
+**Estado:** implementado y validado localmente en Follow Up Quotations USD y Special Quotations JPY. Queda pendiente la validación posterior al despliegue en Railway.
+
+### Nuevo filtro Estado
+
+- [x] Agregar en la franja de filtros de **Monthly Report** un selector adicional llamado **Estado**, colocado junto al filtro Resultado.
+- [x] Incluir las opciones **Todos**, **Pending**, **Lost** y **PO**, usando **Todos** como valor inicial para no ocultar registros al abrir el reporte.
+- [x] Interpretar este filtro como el estado vigente de la cotización al momento de consultar el reporte, no como el estado que tenía en cada gestión histórica.
+- [x] Al seleccionar **Pending**, mostrar únicamente las cotizaciones que actualmente continúan pendientes.
+- [x] Al seleccionar **Lost**, mostrar únicamente las cotizaciones cuyo estado actual sea Lost.
+- [x] Al seleccionar **PO**, mostrar únicamente las cotizaciones cuyo estado actual sea PO.
+
+### Combinación con los filtros existentes
+
+- [x] Permitir combinar Estado con Fecha inicial, Fecha final, Usuario gestor y Resultado sin mantener filtros ocultos de otras vistas.
+- [x] Hacer que el total de resultados de la tabla respete simultáneamente todos los filtros seleccionados.
+- [x] Hacer que los cuadros **Hubo respuesta**, **Sin respuesta**, **En espera** y **Cotizaciones gestionadas** se recalculen usando también el Estado seleccionado.
+- [x] Mantener la regla de respuesta acumulativa: PO y Lost deben aparecer como **Hubo respuesta**, y una Pending con respuesta histórica positiva debe conservar esa clasificación.
+- [x] Al pulsar **Limpiar filtros**, restablecer Estado a **Todos**, Resultado a **Gestionadas**, Usuario gestor a su valor inicial y el periodo al mes actual.
+- [x] Conservar el filtro Estado y sus etiquetas en inglés, español y japonés.
+
+### Alcance y validación
+
+- [x] Implementar el mismo comportamiento en Follow Up Quotations USD y Special Quotations JPY.
+- [x] Confirmar que una cotización se muestre una sola vez aunque tenga múltiples gestiones dentro del periodo.
+- [x] Probar todas las combinaciones de Estado con Hubo respuesta, Sin respuesta, En espera y Gestionadas.
+- [x] Verificar que cambiar el filtro no modifique estados, comentarios, historial ni datos de las cotizaciones.
+- [x] Confirmar que los conteos de los cuatro cuadros coincidan con el detalle correspondiente al Estado seleccionado.
 
 ## Cambio implementado: reporte ejecutivo gerencial de una página
 

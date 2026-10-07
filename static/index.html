@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Quotation Follow-up | NT Tool</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261007.1">
+  <link rel="stylesheet" href="/static/styles.css?v=20261007.2">
 </head>
 <body>
   <div id="app" class="app-shell hidden">
@@ -107,6 +107,7 @@
             <label><span data-i18n="end_date">End date</span><input id="monthly-end" type="date"></label>
             <label><span data-i18n="managing_user">Managing user</span><select id="monthly-user"></select></label>
             <label><span data-i18n="result">Result</span><select id="monthly-result"><option value="managed" data-i18n="managed_quotes">Managed</option><option value="yes" data-i18n="responded">Responded</option><option value="no" data-i18n="no_response">No response</option><option value="pending" data-i18n="awaiting_response">Awaiting response</option></select></label>
+            <label><span data-i18n="status">Status</span><select id="monthly-status"><option value="all" data-i18n="all">All</option><option value="pending">Pending</option><option value="lost">Lost</option><option value="po">PO</option></select></label>
             <button id="monthly-current" class="button ghost" type="button" data-i18n="current_month">Current month</button>
             <button id="monthly-refresh" class="button primary" type="button" data-i18n="apply_filters">Apply filters</button>
             <button id="monthly-clear" class="button ghost" type="button" data-i18n="clear_filters">Clear filters</button>
@@ -174,6 +175,6 @@
     </div>
   </form>
 </dialog>
-  <script src="/static/app.js?v=20261007.1" defer></script>
+  <script src="/static/app.js?v=20261007.2" defer></script>
 </body>
 </html>

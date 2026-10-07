@@ -139,7 +139,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise PermissionError("Your role cannot view another user's activity")
             allowed_ids={int(item["id"]) for item in auth.report_users(user)}
             if actor_id not in allowed_ids: raise ValueError("Invalid report user")
-        return database.monthly_activity(workspace,start,end,actor_id,params.get("result","managed"))
+        return database.monthly_activity(workspace,start,end,actor_id,params.get("result","managed"),params.get("status","all"))
 
     def do_GET(self)->None:  # noqa: N802
         parsed=urlparse(self.path); params={key:values[0] for key,values in parse_qs(parsed.query).items()}

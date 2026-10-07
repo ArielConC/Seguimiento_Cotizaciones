@@ -980,6 +980,7 @@ def monthly_activity(
     end_date: str,
     actor_user_id: int | None = None,
     result_filter: str = "managed",
+    status_filter: str = "all",
 ) -> dict[str, Any]:
     """Return saved Manage activity by actor and event date, never by quote date."""
     start_date, end_date = validate_period(start_date, end_date)
@@ -988,6 +989,9 @@ def monthly_activity(
     result_filter = str(result_filter or "managed").strip().casefold()
     if result_filter not in {"managed", "yes", "no", "pending"}:
         raise ValueError("Invalid monthly report result filter")
+    status_filter = str(status_filter or "all").strip().casefold()
+    if status_filter not in {"all", "pending", "lost", "po"}:
+        raise ValueError("Invalid monthly report status filter")
 
     if workspace == "standard":
         quote_table = "quotes"
@@ -1012,9 +1016,12 @@ def monthly_activity(
         raise ValueError("Invalid workspace")
 
     actor_clause = " AND e.user_id=?" if actor_user_id is not None else ""
+    status_clause = " AND q.status=?" if status_filter != "all" else ""
     params: list[Any] = [start_date, end_date]
     if actor_user_id is not None:
         params.append(int(actor_user_id))
+    if status_filter != "all":
+        params.append(status_filter)
     with connect() as db:
         raw = rows_to_dicts(db.execute(
             f"""SELECT e.id AS event_id,e.quote_id,e.from_status,e.to_status,e.follow_up_type,e.note,
@@ -1040,7 +1047,7 @@ def monthly_activity(
                 ORDER BY datetime(status_event.created_at) DESC,status_event.id DESC LIMIT 1) AS response_status_by
             FROM {event_table} e JOIN {quote_table} q ON q.id=e.quote_id
             WHERE e.event_type='review_saved' AND substr(e.created_at,1,10) BETWEEN ? AND ?
-            AND {visible_clause}{actor_clause}
+            AND {visible_clause}{actor_clause}{status_clause}
             ORDER BY datetime(e.created_at),e.id""",
             params,
         ).fetchall())
@@ -1102,6 +1109,7 @@ def monthly_activity(
         "end_date": end_date,
         "actor_user_id": actor_user_id,
         "result_filter": result_filter,
+        "status_filter": status_filter,
         "activity_count": len(activities),
         "managed_count": len(latest_by_quote),
         "responses": response_counts,
