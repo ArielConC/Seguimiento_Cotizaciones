@@ -177,6 +177,24 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path=="/api/report-users": self._json(auth.report_users(user))
             elif parsed.path=="/api/audit": self._json(auth.recent_audit(user,int(params.get("limit","100"))))
             elif parsed.path=="/api/backup/status": self._json(backup.status())
+            # --- NUEVO ENDPOINT PARA DESCARGAR EL BACKUP ---
+            elif parsed.path == "/api/backup/download":
+                if not auth.can_admin(user): raise PermissionError("Administrator permission required")
+                
+                # Importar glob y os si no estuvieran ya listos (pero Path ya está importado)
+                backups_dir = Path("/data/backups")
+                archivos = list(backups_dir.glob("cotizaciones_*.db"))
+                
+                if not archivos:
+                    # Al lanzar KeyError, tu manejador _handle_error devolverá automáticamente un 404
+                    raise KeyError("No se encontraron backups disponibles")
+                    
+                # Ordenar para obtener el más reciente (posición 0 al invertir el orden)
+                ultimo_backup = sorted(archivos, reverse=True)[0]
+                content = ultimo_backup.read_bytes()
+                
+                self._download(content, "application/octet-stream", ultimo_backup.name)
+            # -----------------------------------------------
             elif parsed.path in {"/api/reports/range","/api/special/reports/range"}:
                 workspace="special" if "/special/" in parsed.path else "standard"; self._json(self._report(workspace,params,user))
             elif parsed.path in {"/api/monthly-report","/api/special/monthly-report"}:
