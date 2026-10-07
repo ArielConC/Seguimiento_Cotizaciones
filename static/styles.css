@@ -51,3 +51,4 @@ tr.tracking-orange:hover{background:#ffe7c3}tr.tracking-red:hover{background:#ff
 .monthly-controls{grid-template-columns:150px 150px minmax(190px,1fr) minmax(170px,.8fr) auto auto auto}
 @media(max-width:1200px){.monthly-controls{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:760px){.monthly-controls,.monthly-kpis{grid-template-columns:1fr}}
+.response-evidence{display:block;margin-top:4px;color:var(--muted);font-size:8px;line-height:1.35;white-space:nowrap}

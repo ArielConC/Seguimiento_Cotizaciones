@@ -94,6 +94,52 @@ def validate_period(start: str = "", end: str = "") -> tuple[str, str]:
     return start_date.isoformat(), end_date.isoformat()
 
 
+def effective_response_case(quote_alias: str, event_table: str) -> str:
+    """SQL expression for the cumulative response classification of a quotation."""
+    return f"""CASE
+        WHEN {quote_alias}.status IN ('po','lost') THEN 'yes'
+        WHEN {quote_alias}.client_response='yes' OR EXISTS(
+            SELECT 1 FROM {event_table} response_yes
+            WHERE response_yes.quote_id={quote_alias}.id
+            AND response_yes.event_type='review_saved' AND response_yes.client_response='yes'
+        ) THEN 'yes'
+        WHEN {quote_alias}.client_response='no' OR EXISTS(
+            SELECT 1 FROM {event_table} response_no
+            WHERE response_no.quote_id={quote_alias}.id
+            AND response_no.event_type='review_saved' AND response_no.client_response='no'
+        ) THEN 'no'
+        ELSE 'pending' END"""
+
+
+def response_classification(status: str, current_response: str, events: list[dict[str, Any]]) -> dict[str, Any]:
+    """Calculate the effective response while preserving every event's original result."""
+    reviews = [event for event in events if event.get("event_type") == "review_saved"]
+    positives = [event for event in reviews if event.get("client_response") == "yes"]
+    negatives = [event for event in reviews if event.get("client_response") == "no"]
+    status_events = [event for event in events if event.get("event_type") == "status_changed" and event.get("to_status") == status]
+    evidence: dict[str, Any] | None = positives[-1] if positives else None
+    basis = "history"
+    if status in {"po", "lost"}:
+        response = "yes"
+        basis = status
+        evidence = evidence or (status_events[-1] if status_events else None)
+    elif positives or current_response == "yes":
+        response = "yes"
+        evidence = evidence or (reviews[-1] if reviews else None)
+    elif negatives or current_response == "no":
+        response = "no"
+        evidence = negatives[-1] if negatives else (reviews[-1] if reviews else None)
+    else:
+        response = "pending"
+        evidence = reviews[-1] if reviews else None
+    return {
+        "effective_response": response,
+        "response_basis": basis,
+        "response_at": evidence.get("created_at") if evidence else None,
+        "response_by": evidence.get("user_name") if evidence else "",
+    }
+
+
 def _days_since(value: str | None) -> int:
     if not value:
         return 0
@@ -333,6 +379,7 @@ def initialize() -> None:
             "change_summary": "TEXT NOT NULL DEFAULT ''",
         })
         db.execute("CREATE INDEX IF NOT EXISTS idx_events_review_actor ON quote_events(event_type,user_id,created_at)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_events_quote_response ON quote_events(quote_id,event_type,client_response,created_at)")
         db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('quotation_root',?)", (DEFAULT_QUOTATION_ROOT,))
         db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('months_back','3')")
         db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('scan_interval_seconds','300')")
@@ -765,6 +812,7 @@ def get_quote(quote_id: int) -> dict[str, Any]:
         events = rows_to_dicts(db.execute("SELECT * FROM quote_events WHERE quote_id=? ORDER BY created_at,id", (quote_id,)).fetchall())
         invoices = po_invoices.active(db,"quote_invoices",quote_id)
     result = decorate_quote(dict(row)); result["comments"] = comments; result["events"] = events; result["invoices"] = invoices
+    result.update(response_classification(result["status"],result.get("client_response") or "pending",events))
     result["read_only"] = bool(result["is_historical"])
     return result
 
@@ -880,10 +928,11 @@ def dashboard(agent: str = "", start: str = "", end: str = "") -> dict[str, Any]
         counts = {**pending, **po, "lost": lost or 0, "total": int(pending["all_pending"])+int(po["po"])+int(lost or 0)}
         
         # --- NUEVO: Gráfica de Efectividad de Contacto ---
+        effective_response = effective_response_case("q", "quote_events")
         responses_raw = rows_to_dicts(db.execute(
-            f"""SELECT q.client_response, COUNT(*) AS count
-            FROM quotes q WHERE q.status='pending' AND q.is_archived=0 AND q.is_historical=0
-            {agent_clause}{quote_period} GROUP BY q.client_response""", quote_params).fetchall())
+            f"""SELECT {effective_response} AS client_response, COUNT(*) AS count
+            FROM quotes q WHERE q.is_archived=0 AND q.is_historical=0
+            {agent_clause}{quote_period} GROUP BY {effective_response}""", quote_params).fetchall())
         responses = {"yes": 0, "no": 0, "pending": 0}
         for r in responses_raw:
             val = r.get("client_response") or "pending"
@@ -945,7 +994,8 @@ def monthly_activity(
         event_table = "quote_events"
         quote_fields = """q.folio AS folio,q.quote_date,q.end_user,q.distributor_code,q.nt_agent,
             q.priority,q.status AS current_status,q.total_usd AS amount,q.customer_order,
-            q.is_historical,q.is_archived"""
+            q.is_historical,q.is_archived,q.client_response AS current_client_response,
+            q.last_reviewed_at,q.status_changed_at"""
         visible_clause = "q.is_historical=0 AND q.is_archived=0"
         currency = "USD"
     elif workspace == "special":
@@ -954,7 +1004,8 @@ def monthly_activity(
         quote_fields = """COALESCE(NULLIF(q.source_quote_number,''),printf('SPQ-%05d',q.id)) AS folio,
             q.quote_date,q.customer_name AS end_user,q.code AS distributor_code,q.nt_agent,
             q.priority,q.status AS current_status,q.unit_price AS amount,'' AS customer_order,
-            0 AS is_historical,q.is_archived"""
+            0 AS is_historical,q.is_archived,q.client_response AS current_client_response,
+            q.last_reviewed_at,q.status_changed_at"""
         visible_clause = "q.is_archived=0"
         currency = "JPY"
     else:
@@ -970,7 +1021,23 @@ def monthly_activity(
             e.user_id,e.user_name,e.created_at,
             COALESCE(NULLIF(e.client_response,''),'pending') AS client_response,
             COALESCE(NULLIF(e.change_summary,''),'Review saved') AS change_summary,
-            {quote_fields}
+            {quote_fields},
+            EXISTS(SELECT 1 FROM {event_table} response_yes WHERE response_yes.quote_id=q.id
+                AND response_yes.event_type='review_saved' AND response_yes.client_response='yes') AS has_positive_response,
+            EXISTS(SELECT 1 FROM {event_table} response_no WHERE response_no.quote_id=q.id
+                AND response_no.event_type='review_saved' AND response_no.client_response='no') AS has_negative_response,
+            (SELECT response_yes.created_at FROM {event_table} response_yes WHERE response_yes.quote_id=q.id
+                AND response_yes.event_type='review_saved' AND response_yes.client_response='yes'
+                ORDER BY datetime(response_yes.created_at) DESC,response_yes.id DESC LIMIT 1) AS positive_response_at,
+            (SELECT response_yes.user_name FROM {event_table} response_yes WHERE response_yes.quote_id=q.id
+                AND response_yes.event_type='review_saved' AND response_yes.client_response='yes'
+                ORDER BY datetime(response_yes.created_at) DESC,response_yes.id DESC LIMIT 1) AS positive_response_by,
+            (SELECT status_event.created_at FROM {event_table} status_event WHERE status_event.quote_id=q.id
+                AND status_event.event_type='status_changed' AND status_event.to_status=q.status
+                ORDER BY datetime(status_event.created_at) DESC,status_event.id DESC LIMIT 1) AS response_status_at,
+            (SELECT status_event.user_name FROM {event_table} status_event WHERE status_event.quote_id=q.id
+                AND status_event.event_type='status_changed' AND status_event.to_status=q.status
+                ORDER BY datetime(status_event.created_at) DESC,status_event.id DESC LIMIT 1) AS response_status_by
             FROM {event_table} e JOIN {quote_table} q ON q.id=e.quote_id
             WHERE e.event_type='review_saved' AND substr(e.created_at,1,10) BETWEEN ? AND ?
             AND {visible_clause}{actor_clause}
@@ -988,6 +1055,29 @@ def monthly_activity(
             response = "pending"
         event["client_response"] = response
         event["status"] = event.get("to_status") or event.get("current_status") or "pending"
+        current_status = str(event.get("current_status") or "pending")
+        current_response = str(event.get("current_client_response") or "pending")
+        if current_status in {"po", "lost"}:
+            effective_response = "yes"
+            event["response_basis"] = current_status
+            event["response_at"] = event.get("positive_response_at") or event.get("response_status_at") or event.get("status_changed_at")
+            event["response_by"] = event.get("positive_response_by") or event.get("response_status_by") or ""
+        elif bool(event.get("has_positive_response")) or current_response == "yes":
+            effective_response = "yes"
+            event["response_basis"] = "history"
+            event["response_at"] = event.get("positive_response_at") or event.get("last_reviewed_at")
+            event["response_by"] = event.get("positive_response_by") or ""
+        elif bool(event.get("has_negative_response")) or current_response == "no":
+            effective_response = "no"
+            event["response_basis"] = "history"
+            event["response_at"] = None
+            event["response_by"] = ""
+        else:
+            effective_response = "pending"
+            event["response_basis"] = "history"
+            event["response_at"] = None
+            event["response_by"] = ""
+        event["effective_response"] = effective_response
         activity_counts[quote_id] = activity_counts.get(quote_id, 0) + 1
         activities.append(event)
         latest_by_quote[quote_id] = event
@@ -995,12 +1085,12 @@ def monthly_activity(
     response_counts = {"yes": 0, "no": 0, "pending": 0}
     rows: list[dict[str, Any]] = []
     for quote_id, event in latest_by_quote.items():
-        response_counts[event["client_response"]] += 1
+        response_counts[event["effective_response"]] += 1
         event = dict(event)
         event["activity_count"] = activity_counts[quote_id]
         event["last_activity_at"] = event["created_at"]
         event["managed_by"] = event.get("user_name") or "System"
-        if result_filter != "managed" and event["client_response"] != result_filter:
+        if result_filter != "managed" and event["effective_response"] != result_filter:
             continue
         rows.append(event)
     rows.sort(key=lambda row: (str(row.get("last_activity_at") or ""), int(row.get("event_id") or 0)), reverse=True)

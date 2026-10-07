@@ -428,12 +428,14 @@ class V2WorkflowTests(unittest.TestCase):
 
         theirs=database.monthly_activity("standard",today,today,other["id"])
         self.assertEqual((theirs["activity_count"],theirs["managed_count"]),(1,1))
-        self.assertEqual(theirs["responses"],{"yes":0,"no":1,"pending":0})
+        self.assertEqual(theirs["responses"],{"yes":1,"no":0,"pending":0})
         self.assertEqual(theirs["rows"][0]["managed_by"],"ELEONOR BARRAGAN")
+        self.assertEqual(theirs["rows"][0]["client_response"],"no")
+        self.assertEqual(theirs["rows"][0]["effective_response"],"yes")
 
         team=database.monthly_activity("standard",today,today,None)
         self.assertEqual((team["activity_count"],team["managed_count"]),(4,2))
-        self.assertEqual(team["responses"],{"yes":0,"no":1,"pending":1})
+        self.assertEqual(team["responses"],{"yes":1,"no":0,"pending":1})
         with database.connect() as db:
             event=db.execute("SELECT client_response,change_summary,user_id FROM quote_events WHERE event_type='review_saved' ORDER BY id LIMIT 1").fetchone()
         self.assertEqual(event["client_response"],"yes")
@@ -450,6 +452,36 @@ class V2WorkflowTests(unittest.TestCase):
         self.assertEqual(data["currency"],"JPY")
         self.assertEqual((data["activity_count"],data["managed_count"],len(data["rows"])),(1,1,1))
         self.assertEqual(data["rows"][0]["client_response"],"yes")
+        self.assertEqual(data["rows"][0]["effective_response"],"yes")
+
+    def test_effective_response_is_cumulative_and_po_lost_are_responded(self)->None:
+        preview=imports_manager.preview("standard",standard_book(),"daily.xlsx",self.user)
+        imports_manager.confirm("standard",preview["token"],self.user)
+        standard_rows=database.list_quotes({})
+        pending=next(row for row in standard_rows if row["folio"]=="QT-100")
+        lost=next(row for row in standard_rows if row["folio"]=="QTI-101")
+        database.update_quote(pending["id"],"pending","","","email",False,None,None,self.user,client_response="yes")
+        database.update_quote(pending["id"],"pending","","","call",False,None,None,self.user,client_response="no")
+        database.update_quote(lost["id"],"lost","","Mismatch","call",False,None,None,self.user,client_response="no")
+        self.assertEqual(database.get_quote(pending["id"])["effective_response"],"yes")
+        self.assertEqual(database.get_quote(lost["id"])["effective_response"],"yes")
+        today=database.today_local().isoformat()
+        standard_month=database.monthly_activity("standard",today,today,self.user["id"])
+        self.assertEqual(standard_month["responses"],{"yes":2,"no":0,"pending":0})
+        self.assertEqual({row["folio"] for row in database.monthly_activity("standard",today,today,self.user["id"],"yes")["rows"]},{"QT-100","QTI-101"})
+
+        special_preview=imports_manager.preview("special",special_book(),"special.xlsx",self.user)
+        imports_manager.confirm("special",special_preview["token"],self.user)
+        special_rows=special.list_quotes({})
+        converted=special_rows[0]
+        special.update_quote(converted["id"],"po","","","visit",False,None,None,self.user,[{
+            "invoice_date":today,"invoice_series":"IV","invoice_number":"JP-EFFECTIVE","amount":500,
+        }],client_response="no")
+        special_detail=special.get_quote(converted["id"])
+        self.assertEqual(special_detail["client_response"],"no")
+        self.assertEqual(special_detail["effective_response"],"yes")
+        special_month=database.monthly_activity("special",today,today,self.user["id"],"yes")
+        self.assertEqual([row["quote_id"] for row in special_month["rows"]],[converted["id"]])
 
     def test_monthly_activity_keeps_one_hundred_events_and_one_unique_quote(self)->None:
         preview=imports_manager.preview("standard",standard_book(),"daily.xlsx",self.user)
@@ -477,7 +509,7 @@ class V2WorkflowTests(unittest.TestCase):
         september=database.monthly_activity("standard","2026-09-01","2026-09-30",self.user["id"])
         october=database.monthly_activity("standard","2026-10-01","2026-10-31",self.user["id"])
         self.assertEqual((september["activity_count"],october["activity_count"]),(1,0))
-        self.assertEqual(september["responses"],{"yes":0,"no":0,"pending":1})
+        self.assertEqual(september["responses"],{"yes":1,"no":0,"pending":0})
 
     def test_report_user_selector_respects_permissions_and_minimizes_account_data(self)->None:
         team=auth.report_users(self.user)

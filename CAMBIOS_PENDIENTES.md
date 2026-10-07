@@ -1,6 +1,6 @@
 # Seguimiento de cambios
 
-Actualizado el 7 de octubre de 2026. La fase de facturas múltiples quedó implementada, migrada y validada. El reporte ejecutivo de una página y la corrección de Gestionadas/No Gestionadas ya se implementaron y validaron localmente; los apartados posteriores continúan como cambios pendientes hasta su implementación o despliegue. El nuevo modo Monthly Report basado en actividad de seguimiento quedó implementado y validado localmente.
+Actualizado el 7 de octubre de 2026. La fase de facturas múltiples quedó implementada, migrada y validada. El reporte ejecutivo de una página y la corrección de Gestionadas/No Gestionadas ya se implementaron y validaron localmente; los apartados posteriores continúan como cambios pendientes hasta su implementación o despliegue. El nuevo modo Monthly Report basado en actividad de seguimiento quedó implementado y validado localmente. La clasificación acumulativa de respuestas para PO, Lost y Pending quedó implementada y validada localmente.
 
 ## Cambio implementado: modo Monthly Report por actividad
 
@@ -53,6 +53,44 @@ Actualizado el 7 de octubre de 2026. La fase de facturas múltiples quedó imple
 - [x] Verificar que cada actividad muestre con precisión qué usuario realizó qué cambio y que esa información coincida con el historial y la auditoría.
 - [x] Conciliar los conteos de los cuatro cuadros con el detalle filtrado y verificar por separado USD y JPY.
 - [x] Confirmar que este modo no cambie los datos, estados, comentarios ni reglas de las vistas operativas existentes.
+
+## Cambio implementado: clasificación acumulativa de cotizaciones con respuesta
+
+**Estado:** implementado y validado localmente en Follow Up Quotations USD y Special Quotations JPY. Queda pendiente la validación posterior al despliegue en Railway.
+
+**Nota de alcance:** esta clasificación acumulativa sustituye la regla anterior de clasificar una cotización únicamente por su gestión más reciente. El periodo sigue determinando qué actividad entra al reporte, pero no borra una respuesta positiva histórica.
+
+### Regla de respuesta efectiva
+
+- [x] Considerar automáticamente como **Hubo respuesta** toda cotización cuyo estado vigente sea **PO**, porque la conversión confirma que existió respuesta o comunicación suficiente para concretar la operación.
+- [x] Considerar automáticamente como **Hubo respuesta** toda cotización cuyo estado vigente sea **Lost**, porque la clasificación y el motivo de pérdida representan una respuesta o resolución conocida de la operación.
+- [x] Para cotizaciones que continúen en **Pending**, revisar todo su historial de gestiones y considerarlas como **Hubo respuesta** cuando exista por lo menos un seguimiento guardado con el resultado **Sí, respondió**.
+- [x] Una cotización Pending que haya recibido respuesta debe conservar la clasificación **Hubo respuesta** aunque una gestión posterior se marque como **No hubo respuesta** o **En espera**, ya que esas opciones pueden representar un nuevo intento de seguimiento y no deben borrar la respuesta histórica.
+- [x] Clasificar una cotización Pending como **Sin respuesta** únicamente cuando no exista ninguna gestión histórica marcada **Sí, respondió** y exista al menos una gestión marcada **No hubo respuesta**.
+- [x] Clasificar una cotización Pending como **En espera** cuando no exista ninguna respuesta histórica ni una gestión concluyente marcada **No hubo respuesta**.
+
+### Aplicación en Monthly Report
+
+- [x] Mantener el rango de fechas de Monthly Report para decidir qué cotizaciones tuvieron gestiones dentro del periodo; una cotización sin actividad en el periodo no debe incorporarse solo por haber recibido respuesta anteriormente.
+- [x] Una vez incluida por tener actividad dentro del periodo, calcular su categoría de respuesta usando la regla acumulativa y todo el historial disponible, no solamente la última gestión del periodo.
+- [x] Aplicar la misma regla cuando se filtre por Usuario gestor: el filtro determina qué gestiones incorporan la cotización al reporte, pero la clasificación **Hubo respuesta** debe reconocer la respuesta histórica registrada en la cotización.
+- [x] Mostrar claramente en el detalle la fecha y el usuario de la primera o última respuesta positiva que sustenta la clasificación, para que el resultado pueda comprobarse sin interpretar comentarios manualmente.
+- [x] Conservar sin alteración los valores originales de cada evento de seguimiento. La clasificación acumulativa será un dato calculado y no deberá reescribir retroactivamente el historial.
+
+### Aplicación en listas e indicadores
+
+- [x] Utilizar esta respuesta efectiva en los cuadros **Hubo respuesta**, **Sin respuesta** y **En espera**, así como en sus filtros y conteos.
+- [x] Mostrar PO y Lost dentro de **Hubo respuesta** cuando formen parte del alcance y periodo consultados, sin depender del valor manual que tuviera anteriormente el selector de respuesta.
+- [x] Mantener visible el resultado particular de cada seguimiento dentro del historial, aunque la clasificación general de la cotización sea **Hubo respuesta**.
+
+### Validación requerida
+
+- [x] Probar una Pending con secuencia `Sí respondió → No hubo respuesta` y confirmar que su clasificación general continúe como **Hubo respuesta**.
+- [x] Probar una Pending con únicamente `No hubo respuesta` y confirmar que aparezca como **Sin respuesta**.
+- [x] Probar una Pending con únicamente `En espera` y confirmar que aparezca como **En espera**.
+- [x] Probar PO y Lost con valores manuales anteriores `No hubo respuesta` o `En espera` y confirmar que ambas se clasifiquen como **Hubo respuesta**.
+- [x] Probar una respuesta positiva fuera del periodo y una nueva gestión dentro del periodo: la cotización debe entrar por la gestión del periodo y clasificarse como **Hubo respuesta** gracias a su historial.
+- [x] Conciliar los conteos y filtros en Follow Up Quotations USD y Special Quotations JPY, sin duplicar cotizaciones y sin modificar el historial existente.
 
 ## Cambio implementado: reporte ejecutivo gerencial de una página
 

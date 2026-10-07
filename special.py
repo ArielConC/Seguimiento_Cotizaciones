@@ -101,6 +101,7 @@ def initialize() -> None:
             "client_response":"TEXT","change_summary":"TEXT NOT NULL DEFAULT ''",
         })
         db.execute("CREATE INDEX IF NOT EXISTS idx_special_events_review_actor ON special_quote_events(event_type,user_id,created_at)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_special_events_quote_response ON special_quote_events(quote_id,event_type,client_response,created_at)")
         db.execute(
             """INSERT INTO special_quote_comments(quote_id,body,user_name,created_at,is_legacy)
             SELECT q.id,q.comment,'Historical data',q.updated_at,1 FROM special_quotes q
@@ -441,6 +442,7 @@ def get_quote(quote_id:int)->dict[str,Any]:
         events=database.rows_to_dicts(db.execute("SELECT * FROM special_quote_events WHERE quote_id=? ORDER BY created_at,id",(quote_id,)).fetchall())
         invoices=po_invoices.active(db,"special_quote_invoices",quote_id)
     result=_decorate(dict(row)); result["comments"]=comments; result["events"]=events; result["invoices"]=invoices; result["read_only"]=False
+    result.update(database.response_classification(result["status"],result.get("client_response") or "pending",events))
     return result
 
 
@@ -541,9 +543,10 @@ def dashboard(agent:str="",start:str="",end:str="")->dict[str,Any]:
         pending={key:(value or 0) for key,value in pending.items()}
         po={key:(value or 0) for key,value in po.items()}
         counts={**pending,**po,"lost":lost or 0,"total":int(pending["all_pending"])+int(po["po"])+int(lost or 0)}
-        responses_raw=database.rows_to_dicts(db.execute(f"""SELECT q.client_response,COUNT(*) AS count
-            FROM special_quotes q WHERE q.status='pending' AND q.is_archived=0 {agent_clause}{quote_period}
-            GROUP BY q.client_response""",quote_params).fetchall())
+        effective_response=database.effective_response_case("q","special_quote_events")
+        responses_raw=database.rows_to_dicts(db.execute(f"""SELECT {effective_response} AS client_response,COUNT(*) AS count
+            FROM special_quotes q WHERE q.is_archived=0 {agent_clause}{quote_period}
+            GROUP BY {effective_response}""",quote_params).fetchall())
         responses={"yes":0,"no":0,"pending":0}
         for row in responses_raw:
             value=row.get("client_response") or "pending"
