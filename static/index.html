@@ -141,11 +141,11 @@
   </dialog>
 
   <dialog id="system-dialog" class="system-dialog">
-    <div class="dialog-content"><div class="dialog-heading"><div><p class="eyebrow" data-i18n="select_workspace">SELECT WORKSPACE</p><h2 data-i18n="choose_system">Choose a follow-up system</h2></div></div><div class="system-options"><button class="system-option" data-system="standard"><span class="system-icon excel">XLSX</span><strong>Follow Up Quotations</strong><small data-i18n="standard_help">USD quotations imported from the daily Excel report.</small></button><button class="system-option" data-system="special"><span class="system-icon yen">JPY</span><strong>Follow Up Special Quotations</strong><small data-i18n="special_help">Special items in JPY with percentile-based priorities.</small></button></div></div>
+    <div class="dialog-content"><div class="dialog-heading"><div><p class="eyebrow" data-i18n="select_workspace">SELECT WORKSPACE</p><h2 data-i18n="choose_system">Choose a follow-up system</h2></div></div><div class="system-options"><button class="system-option" data-system="standard"><span class="system-icon excel">XLS/TXT</span><strong>Follow Up Quotations</strong><small data-i18n="standard_help">USD quotations imported from the daily Excel or TXT report.</small></button><button class="system-option" data-system="special"><span class="system-icon yen">JPY</span><strong>Follow Up Special Quotations</strong><small data-i18n="special_help">Special items in JPY with percentile-based priorities.</small></button></div></div>
   </dialog>
 
   <dialog id="upload-dialog">
-    <form id="upload-form" class="dialog-content"><div class="dialog-heading"><div><p class="eyebrow" data-i18n="import_data">IMPORT DATA</p><h2 id="upload-title">Upload quotations</h2></div><button type="button" class="icon-button dialog-close">×</button></div><p id="upload-help" class="section-help"></p><label>Excel<input id="upload-file" type="file" accept=".xlsx" required></label><div id="import-preview" class="hidden"></div><div class="dialog-actions"><button type="button" class="button ghost dialog-close" data-i18n="cancel">Cancel</button><button id="preview-import" class="button primary" type="submit" data-i18n="preview">Preview</button><button id="confirm-import" class="button primary hidden" type="button" data-i18n="confirm_import">Confirm import</button></div></form>
+    <form id="upload-form" class="dialog-content"><div class="dialog-heading"><div><p class="eyebrow" data-i18n="import_data">IMPORT DATA</p><h2 id="upload-title">Upload quotations</h2></div><button type="button" class="icon-button dialog-close">×</button></div><p id="upload-help" class="section-help"></p><label>Excel / TXT<input id="upload-file" type="file" accept=".xlsx,.txt" required></label><div id="import-preview" class="hidden"></div><div class="dialog-actions"><button type="button" class="button ghost dialog-close" data-i18n="cancel">Cancel</button><button id="preview-import" class="button primary" type="submit" data-i18n="preview">Preview</button><button id="confirm-import" class="button primary hidden" type="button" data-i18n="confirm_import">Confirm import</button></div></form>
   </dialog>
 
   <dialog id="manage-dialog">
@@ -166,7 +166,7 @@
       <button type="button" class="icon-button dialog-close">×</button>
     </div>
     <p class="section-help" data-i18n="invoice_import_help">Invoices are matched to confirmed PO quotations through Texto Extra 2.</p>
-    <label data-i18n="invoices">Invoices<input id="invoice-file" type="file" accept=".xlsx,.xlsm,.xls" required></label>
+    <label data-i18n="invoices">Invoices<input id="invoice-file" type="file" accept=".xlsx,.xlsm,.xls,.txt" required></label>
     <div id="invoice-preview-container" class="hidden"></div>
     <div class="dialog-actions">
       <button type="button" class="button ghost dialog-close" data-i18n="cancel">Cancel</button>
@@ -175,6 +175,6 @@
     </div>
   </form>
 </dialog>
-  <script src="/static/app.js?v=20261007.2" defer></script>
+  <script src="/static/app.js?v=20261007.3" defer></script>
 </body>
 </html>

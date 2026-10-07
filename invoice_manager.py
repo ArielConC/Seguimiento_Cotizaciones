@@ -15,6 +15,7 @@ from openpyxl import load_workbook
 import auth
 import database
 import po_invoices
+from tabular_text import tab_delimited_rows
 
 
 REQUIRED_HEADERS = {"fecha", "serie", "folio", "texto extra 2", "total"}
@@ -68,6 +69,11 @@ def _identifier(value: Any) -> str:
     return str(value).strip()
 
 
+def _folio_identifier(value: Any) -> str:
+    text = _identifier(value)
+    return text.replace(",", "") if re.fullmatch(r"\d{1,3}(?:,\d{3})+", text) else text
+
+
 def _amount(value: Any, row_number: int) -> float:
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         amount = float(value)
@@ -104,6 +110,8 @@ def _date(value: Any, row_number: int) -> str:
 
 def _workbook_rows(content: bytes, filename: str) -> list[list[Any]]:
     suffix = Path(filename).suffix.casefold()
+    if suffix == ".txt":
+        return tab_delimited_rows(content)
     if suffix == ".xls":
         try:
             import xlrd  # type: ignore
@@ -126,7 +134,7 @@ def _workbook_rows(content: bytes, filename: str) -> list[list[Any]]:
         except Exception as exc:
             raise ValueError(f"The .xls file could not be read: {exc}") from exc
     if suffix not in {".xlsx", ".xlsm"}:
-        raise ValueError("Upload an Excel file in .xlsx, .xlsm, or .xls format")
+        raise ValueError("Upload an Excel file in .xlsx, .xlsm, or .xls format, or a tab-delimited .txt file")
     try:
         book = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
         sheet = book.active
@@ -147,7 +155,7 @@ def _parse(content: bytes, filename: str) -> tuple[list[dict[str, Any]], list[di
             break
     if header_index < 0:
         names = ", ".join(sorted(REQUIRED_HEADERS))
-        raise ValueError(f"The Excel file must contain these headers: {names}")
+        raise ValueError(f"The import file must contain these headers: {names}")
 
     parsed: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
@@ -161,7 +169,7 @@ def _parse(content: bytes, filename: str) -> tuple[list[dict[str, Any]], list[di
             continue
         try:
             invoice_series = _identifier(cell("serie"))
-            invoice_number = _identifier(cell("folio"))
+            invoice_number = _folio_identifier(cell("folio"))
             if not invoice_series or not invoice_number:
                 raise ValueError(f"Row {source_index}: Serie and Folio are required")
             parsed.append(
@@ -177,7 +185,7 @@ def _parse(content: bytes, filename: str) -> tuple[list[dict[str, Any]], list[di
         except (TypeError, ValueError) as exc:
             errors.append({"row": source_index, "error": str(exc)})
     if not parsed and not errors:
-        raise ValueError("The Excel file does not contain invoice rows with Texto Extra 2")
+        raise ValueError("The import file does not contain invoice rows with Texto Extra 2")
     return parsed, errors
 
 
@@ -211,7 +219,7 @@ def preview(workspace: str, content: bytes, filename: str, user: dict[str, Any])
         existing: dict[int, set[tuple[str, str]]] = {}
         for invoice in active_rows:
             existing.setdefault(int(invoice["quote_id"]), set()).add(
-                (_normalize(invoice["invoice_series"]), _normalize(invoice["invoice_number"]))
+                (_normalize(invoice["invoice_series"]), _normalize(_folio_identifier(invoice["invoice_number"])))
             )
 
     new_records: list[dict[str, Any]] = []
@@ -310,10 +318,10 @@ def confirm(workspace: str, token: str, user: dict[str, Any]) -> dict[str, Any]:
             actual = [row for row in current if not int(row.get("is_legacy") or 0)]
             if len(actual) != len(current):
                 legacy_replaced += len(current) - len(actual)
-            keys = {(_normalize(row["invoice_series"]), _normalize(row["invoice_number"])) for row in actual}
+            keys = {(_normalize(row["invoice_series"]), _normalize(_folio_identifier(row["invoice_number"]))) for row in actual}
             added_for_quote: list[dict[str, Any]] = []
             for row in incoming:
-                key = (_normalize(row["invoice_series"]), _normalize(row["invoice_number"]))
+                key = (_normalize(row["invoice_series"]), _normalize(_folio_identifier(row["invoice_number"])))
                 if key in keys:
                     continue
                 keys.add(key)

@@ -15,6 +15,7 @@ from openpyxl import load_workbook
 import po_invoices
 import distributors
 from parser import QuoteData, priority_for_total
+from tabular_text import tab_delimited_rows
 
 
 APP_DIR = Path(__file__).resolve().parent
@@ -497,6 +498,8 @@ def _cell_text(value: Any) -> str:
 def _normalize_folio(series: str, number: str) -> tuple[str, str, str]:
     series = re.sub(r"\s+", "", series.upper())
     number = _cell_text(number).strip()
+    if re.fullmatch(r"\d{1,3}(?:,\d{3})+", number):
+        number = number.replace(",", "")
     number = re.sub(rf"^{re.escape(series)}[-_ ]*", "", number, flags=re.I) if series else number
     if not series or not number:
         raise ValueError("Series and folio are required")
@@ -504,16 +507,20 @@ def _normalize_folio(series: str, number: str) -> tuple[str, str, str]:
 
 
 def parse_workbook(content: bytes, filename: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    if not filename.lower().endswith(".xlsx"):
-        raise ValueError("Upload an .xlsx Excel file")
+    suffix = Path(filename).suffix.casefold()
+    if suffix not in {".xlsx", ".txt"}:
+        raise ValueError("Upload an .xlsx Excel file or a tab-delimited .txt file")
     if len(content) > 25 * 1024 * 1024:
-        raise ValueError("The Excel file cannot exceed 25 MB")
-    try:
-        workbook = load_workbook(BytesIO(content), data_only=True, read_only=True)
-    except Exception as exc:
-        raise ValueError("The Excel workbook could not be read") from exc
-    worksheet = workbook.active
-    worksheet_rows = list(worksheet.iter_rows(min_col=1, max_col=11, values_only=True))
+        raise ValueError("The import file cannot exceed 25 MB")
+    if suffix == ".txt":
+        worksheet_rows = [(row + [""] * 11)[:11] for row in tab_delimited_rows(content)]
+    else:
+        try:
+            workbook = load_workbook(BytesIO(content), data_only=True, read_only=True)
+        except Exception as exc:
+            raise ValueError("The Excel workbook could not be read") from exc
+        worksheet = workbook.active
+        worksheet_rows = list(worksheet.iter_rows(min_col=1, max_col=11, values_only=True))
     header_row = None
     for row_number, row_values in enumerate(worksheet_rows[:15], start=1):
         a = _cell_text(row_values[0]).lower()

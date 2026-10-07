@@ -28,7 +28,8 @@ def preview(workspace: str, content: bytes, filename: str, user: dict[str, Any])
     token = secrets.token_urlsafe(24)
     pending = database.IMPORT_DIR / "pending"
     pending.mkdir(parents=True, exist_ok=True)
-    stored = pending / f"{token}.xlsx"
+    suffix = Path(filename).suffix.casefold()
+    stored = pending / f"{token}{suffix if suffix in {'.xlsx','.txt'} else '.bin'}"
     stored.write_bytes(content)
     file_hash = hashlib.sha256(content).hexdigest()
     with database.connect() as db:

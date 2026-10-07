@@ -68,6 +68,26 @@ def invoice_book(order: str = "OP-100", include_unmatched: bool = True) -> bytes
     buffer=BytesIO(); book.save(buffer); return buffer.getvalue()
 
 
+def compact_quotation_txt(order: str = "OP-TXT-12097") -> bytes:
+    rows = [
+        "Todos los Documentos",
+        "",
+        "\t".join(["Fecha","Serie","Folio","Razón Social","Total","Texto Extra 1","Texto Extra 3","Pendiente","Texto Extra 2","Nombre del agente","Neto",""]),
+        "\t".join(["07/10/2026"," QT "," 12,097 "," DISTRIBUCIÓN MÉXICO "," 1,160.00 "," USUARIO FINAL "," AGENTE DIST "," 1,160.00 ",f" {order} "," ARIEL CONTRERAS "," 1,000.00 ",""]),
+    ]
+    return "\r\n".join(rows).encode("cp1252")
+
+
+def compact_invoice_txt(order: str = "OP-TXT-12097") -> bytes:
+    rows = [
+        "Todos los Documentos",
+        "",
+        "\t".join(["Fecha","Serie","Folio","Razón Social","Total","Pendiente","Fecha de Vencimiento","Devuelto","Cancelado","Neto","Descuento Movimiento","Tipo de Cambio","Texto Extra 1","Texto Extra 2","Texto Extra 3","Nombre del agente","Forma de pago clave","Método de pago clave","Uso CFDI",""]),
+        "\t".join(["07/10/2026"," IV "," 8,861 "," DISTRIBUCIÓN MÉXICO "," 1,160.00 ","0","07/11/2026","0","0","1,000.00","0","18.1343","USUARIO FINAL",f" {order} ","AGENTE DIST","ARIEL CONTRERAS","99","PPD","G01",""]),
+    ]
+    return "\r\n".join(rows).encode("cp1252")
+
+
 class V2WorkflowTests(unittest.TestCase):
     def setUp(self)->None:
         self.temp=tempfile.TemporaryDirectory(); self.old=(database.DATA_DIR,database.DB_PATH,database.IMPORT_DIR,backup.BACKUP_DIR)
@@ -124,6 +144,30 @@ class V2WorkflowTests(unittest.TestCase):
         self.assertEqual(report_book["Resumen"]["A11"].value,"Tasas de conversión")
         self.assertEqual(report_book["Resumen"]["B12"].value,1); self.assertEqual(report_book["Resumen"]["C12"].value,1)
         repeated=imports_manager.preview("standard",content,"daily.xlsx",self.user); self.assertEqual(repeated["updated"],2)
+
+    def test_compact_txt_quotation_and_invoice_imports(self)->None:
+        quotation_preview=imports_manager.preview("standard",compact_quotation_txt(),"Cotizaciones Compact.txt",self.user)
+        self.assertEqual((quotation_preview["new"],quotation_preview["errors"]),(1,0))
+        quotation_result=imports_manager.confirm("standard",quotation_preview["token"],self.user)
+        self.assertTrue(quotation_result["archive_path"].endswith(".txt"))
+        quote=database.list_quotes({})[0]
+        self.assertEqual(quote["folio"],"QT-12097")
+        self.assertEqual(quote["distributor_company"],"DISTRIBUCIÓN MÉXICO")
+        self.assertEqual(quote["customer_order"],"OP-TXT-12097")
+        self.assertEqual((quote["total_usd"],quote["net_total_usd"]),(1160,1000))
+
+        invoice_preview=invoice_manager.preview("standard",compact_invoice_txt(),"Facturas Compact.txt",self.user)
+        self.assertEqual((invoice_preview["new"],invoice_preview["invalid"]),(1,0))
+        invoice_result=invoice_manager.confirm("standard",invoice_preview["token"],self.user)
+        self.assertEqual((invoice_result["invoices_added"],invoice_result["quotes_updated"]),(1,1))
+        detail=database.get_quote(quote["id"])
+        self.assertEqual(detail["status"],"po")
+        self.assertEqual(detail["invoices"][0]["invoice_number"],"8861")
+        self.assertEqual(detail["po_date"],"2026-10-07")
+        self.assertEqual(detail["po_total_usd"],1160)
+
+        repeated=invoice_manager.preview("standard",compact_invoice_txt(),"Facturas Compact repetidas.txt",self.user)
+        self.assertEqual((repeated["new"],repeated["duplicate"]),(0,1))
 
     def test_executive_pdf_handles_empty_results_and_overflow_actions(self)->None:
         action_rows=[{
@@ -365,6 +409,8 @@ class V2WorkflowTests(unittest.TestCase):
         self.assertNotIn("await loadData()",javascript)
         self.assertNotIn("const request = await fetch(endpoint",javascript)
         self.assertIn("sidebar-collapsed",javascript)
+        self.assertIn('accept=".xlsx,.txt"',html)
+        self.assertIn('accept=".xlsx,.xlsm,.xls,.txt"',html)
         self.assertIn("el.matches('label')",javascript)
         self.assertIn(":scope > input, :scope > select, :scope > textarea",javascript)
         self.assertNotIn("forEach(el=>el.textContent=t(el.dataset.i18n))",javascript)

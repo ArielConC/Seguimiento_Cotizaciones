@@ -2,6 +2,19 @@
 
 Actualizado el 7 de octubre de 2026. La fase de facturas múltiples quedó implementada, migrada y validada. El reporte ejecutivo de una página y la corrección de Gestionadas/No Gestionadas ya se implementaron y validaron localmente; los apartados posteriores continúan como cambios pendientes hasta su implementación o despliegue. El nuevo modo Monthly Report basado en actividad de seguimiento quedó implementado y validado localmente. La clasificación acumulativa de respuestas para PO, Lost y Pending quedó implementada y validada localmente. El filtro por estado vigente de Monthly Report y la conciliación de estado/facturas de PO quedaron implementados y validados localmente.
 
+## Cambio implementado: importación directa de reportes TXT de Compact
+
+**Estado:** implementado localmente en Follow Up Quotations USD y en la carga de facturas. Conserva la importación Excel y queda pendiente la validación posterior al despliegue en Railway.
+
+- [x] Permitir cargar indistintamente el reporte diario de cotizaciones en `.xlsx` o en `.txt` tabulado.
+- [x] Permitir cargar el reporte de facturas en `.xlsx`, `.xlsm`, `.xls` o `.txt` tabulado.
+- [x] Detectar archivos TXT en UTF-8 o Windows-1252 para conservar correctamente acentos y nombres provenientes de Compact.
+- [x] Limpiar los espacios de relleno de Compact sin alterar la posición de sus columnas.
+- [x] Normalizar folios numéricos con separadores de miles, por ejemplo `12,097` a `12097` y `8,861` a `8861`, para evitar cotizaciones o facturas duplicadas frente a cargas anteriores de Excel.
+- [x] Reutilizar la vista previa, validaciones, confirmación, detección de duplicados, archivo histórico y auditoría existentes.
+- [x] Conservar Special Quotations exclusivamente en Excel; el soporte TXT se limita a los dos reportes USD suministrados por Compact.
+- [ ] Validar en Railway una carga real de ambos TXT antes de incorporarlos al flujo diario definitivo.
+
 ## Cambio implementado: conciliación del estado vigente y las facturas de PO
 
 **Estado:** implementado y validado localmente. Queda listo para commit y validación posterior al despliegue en Railway.

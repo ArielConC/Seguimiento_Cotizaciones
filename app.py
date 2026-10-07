@@ -226,7 +226,7 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path in {"/api/import/preview","/api/special/import/preview"}:
                 workspace="special" if "/special/" in parsed.path else "standard"; payload=self._read_json(35_000_000)
                 try: content=base64.b64decode(str(payload.get("content_base64","")),validate=True)
-                except Exception as exc: raise ValueError("The uploaded Excel content is invalid") from exc
+                except Exception as exc: raise ValueError("The uploaded file content is invalid") from exc
                 self._json(imports_manager.preview(workspace,content,str(payload.get("filename") or "quotations.xlsx"),user),HTTPStatus.CREATED)
             elif parsed.path in {"/api/import/confirm","/api/special/import/confirm"}:
                 workspace="special" if "/special/" in parsed.path else "standard"; payload=self._read_json(); self._json(imports_manager.confirm(workspace,str(payload.get("token","")),user),HTTPStatus.CREATED)
@@ -235,7 +235,7 @@ class Handler(BaseHTTPRequestHandler):
                 workspace = "special" if "/special/" in parsed.path else "standard"
                 payload = self._read_json(35_000_000)
                 try: content = base64.b64decode(str(payload.get("content_base64", "")), validate=True)
-                except Exception as exc: raise ValueError("El archivo Excel es inválido") from exc
+                except Exception as exc: raise ValueError("The uploaded file content is invalid") from exc
                 self._json(invoice_manager.preview(workspace, content, str(payload.get("filename", "")), user), HTTPStatus.CREATED)
                 
             elif parsed.path in {"/api/import/invoices/confirm", "/api/special/import/invoices/confirm"}:
