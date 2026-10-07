@@ -497,6 +497,36 @@ class V2WorkflowTests(unittest.TestCase):
         self.assertEqual((special_po["status_filter"],special_po["managed_count"]),("po",1))
         self.assertEqual(special_po["rows"][0]["quote_id"],converted["id"])
 
+    def test_monthly_report_uses_current_status_after_later_po_conversion(self)->None:
+        preview=imports_manager.preview("standard",standard_book(),"daily.xlsx",self.user)
+        imports_manager.confirm("standard",preview["token"],self.user)
+        quote=next(row for row in database.list_quotes({}) if row["folio"]=="QT-100")
+        database.update_quote(quote["id"],"pending","Follow-up saved","","email",False,None,None,self.user)
+        today=database.today_local().isoformat()
+        timestamp=database.now_iso()
+        with database.connect() as db:
+            db.execute(
+                "UPDATE quotes SET status='po',po_detected=1,po_date=?,po_total_usd=?,status_changed_at=?,updated_at=? WHERE id=?",
+                (today,6100,timestamp,timestamp,quote["id"]),
+            )
+            db.execute(
+                """INSERT INTO quote_invoices(quote_id,invoice_date,invoice_series,invoice_number,amount,currency,
+                   created_by_user_id,created_by_name,created_at) VALUES(?,?,?,?,?,'USD',?,?,?)""",
+                (quote["id"],today,"IV","PO-LATER",6100,self.user["id"],self.user["display_name"],timestamp),
+            )
+            db.execute(
+                """INSERT INTO quote_events(quote_id,event_type,from_status,to_status,user_id,user_name,created_at)
+                   VALUES(?,'status_changed','pending','po',?,?,?)""",
+                (quote["id"],self.user["id"],self.user["display_name"],timestamp),
+            )
+
+        monthly=database.monthly_activity("standard",today,today,self.user["id"])
+        self.assertEqual(monthly["rows"][0]["status"],"po")
+        self.assertEqual(monthly["rows"][0]["to_status"],"pending")
+        self.assertEqual(monthly["rows"][0]["effective_response"],"yes")
+        listed=next(row for row in database.list_quotes({}) if row["id"]==quote["id"])
+        self.assertEqual(listed["has_invoices"],1)
+
     def test_monthly_activity_keeps_one_hundred_events_and_one_unique_quote(self)->None:
         preview=imports_manager.preview("standard",standard_book(),"daily.xlsx",self.user)
         imports_manager.confirm("standard",preview["token"],self.user)

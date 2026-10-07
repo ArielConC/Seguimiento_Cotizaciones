@@ -1,6 +1,17 @@
 # Seguimiento de cambios
 
-Actualizado el 7 de octubre de 2026. La fase de facturas múltiples quedó implementada, migrada y validada. El reporte ejecutivo de una página y la corrección de Gestionadas/No Gestionadas ya se implementaron y validaron localmente; los apartados posteriores continúan como cambios pendientes hasta su implementación o despliegue. El nuevo modo Monthly Report basado en actividad de seguimiento quedó implementado y validado localmente. La clasificación acumulativa de respuestas para PO, Lost y Pending quedó implementada y validada localmente. El filtro por estado vigente de Monthly Report quedó implementado y validado localmente.
+Actualizado el 7 de octubre de 2026. La fase de facturas múltiples quedó implementada, migrada y validada. El reporte ejecutivo de una página y la corrección de Gestionadas/No Gestionadas ya se implementaron y validaron localmente; los apartados posteriores continúan como cambios pendientes hasta su implementación o despliegue. El nuevo modo Monthly Report basado en actividad de seguimiento quedó implementado y validado localmente. La clasificación acumulativa de respuestas para PO, Lost y Pending quedó implementada y validada localmente. El filtro por estado vigente de Monthly Report y la conciliación de estado/facturas de PO quedaron implementados y validados localmente.
+
+## Cambio implementado: conciliación del estado vigente y las facturas de PO
+
+**Estado:** implementado y validado localmente. Queda listo para commit y validación posterior al despliegue en Railway.
+
+- [x] En Monthly Report, mostrar en la columna **Estado** el estado comercial vigente de la cotización, aunque la última gestión guardada dentro del periodo se hubiera realizado cuando todavía estaba Pending.
+- [x] Conservar `from_status`, `to_status` y el resumen de cambios del evento para que **Cambio realizado** siga describiendo fielmente el movimiento histórico.
+- [x] Evitar combinaciones engañosas como **Hubo respuesta + Pending** cuando posteriormente una importación de facturas convirtió la cotización a PO.
+- [x] Calcular la insignia de facturas usando `quote_invoices` activas, que es el registro vigente, y no la tabla heredada `po_invoices`.
+- [x] Aplicar la consulta corregida en las listas normales, Gestionadas y Gerencia de Follow Up Quotations USD.
+- [x] Agregar una prueba de regresión que reproduce una gestión Pending seguida por una conversión posterior a PO, comprobando estado actual, respuesta efectiva, estado histórico e identificación de factura activa.
 
 ## Cambio implementado: modo Monthly Report por actividad
 

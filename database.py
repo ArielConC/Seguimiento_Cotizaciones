@@ -734,8 +734,8 @@ def list_quotes(filters: dict[str, str]) -> list[dict[str, Any]]:
     }
     order = orders.get(filters.get("order", "priority"), orders["priority"])
     with connect() as db:
-        # ---> LÍNEA MODIFICADA <---
-        rows = db.execute(f"SELECT q.*, EXISTS(SELECT 1 FROM po_invoices WHERE quote_id=q.id) AS has_invoices FROM quotes q WHERE {' AND '.join(clauses)} ORDER BY {order}", values).fetchall()
+        # Use only active entries from the current invoice ledger.
+        rows = db.execute(f"SELECT q.*, EXISTS(SELECT 1 FROM quote_invoices WHERE quote_id=q.id AND active=1) AS has_invoices FROM quotes q WHERE {' AND '.join(clauses)} ORDER BY {order}", values).fetchall()
     return [decorate_quote(row) for row in rows_to_dicts(rows)]
 
 
@@ -762,8 +762,8 @@ def list_managed_quotes(filters: dict[str, str] | None = None) -> list[dict[str,
     order = orders.get(filters.get("order", "status_activity"), orders["status_activity"])
     
     with connect() as db:
-        # Incluimos la validación de po_invoices para encender el gafete de Excel
-        rows = db.execute(f"SELECT q.*, EXISTS(SELECT 1 FROM po_invoices WHERE quote_id=q.id) AS has_invoices FROM quotes q WHERE {' AND '.join(clauses)} ORDER BY {order}", values).fetchall()
+        # Use only active entries from the current invoice ledger.
+        rows = db.execute(f"SELECT q.*, EXISTS(SELECT 1 FROM quote_invoices WHERE quote_id=q.id AND active=1) AS has_invoices FROM quotes q WHERE {' AND '.join(clauses)} ORDER BY {order}", values).fetchall()
         
     return [decorate_quote(row) for row in rows_to_dicts(rows)]
 
@@ -798,8 +798,8 @@ def list_management_quotes(filters: dict[str, str] | None = None) -> list[dict[s
     order = orders.get(filters.get("order", "newest_activity"), orders["newest_activity"])
     
     with connect() as db:
-        # Incluimos la validación de po_invoices para encender el gafete de Excel
-        rows = db.execute(f"SELECT q.*, EXISTS(SELECT 1 FROM po_invoices WHERE quote_id=q.id) AS has_invoices FROM quotes q WHERE {' AND '.join(clauses)} ORDER BY {order}", values).fetchall()
+        # The invoice badge must reflect the active invoice ledger, not the retired legacy table.
+        rows = db.execute(f"SELECT q.*, EXISTS(SELECT 1 FROM quote_invoices WHERE quote_id=q.id AND active=1) AS has_invoices FROM quotes q WHERE {' AND '.join(clauses)} ORDER BY {order}", values).fetchall()
         
     return [decorate_quote(row) for row in rows_to_dicts(rows)]
 
@@ -1061,7 +1061,10 @@ def monthly_activity(
         if response not in {"yes", "no", "pending"}:
             response = "pending"
         event["client_response"] = response
-        event["status"] = event.get("to_status") or event.get("current_status") or "pending"
+        # The table shows the quotation's current commercial status.  The status
+        # captured by this historical review remains available in from_status /
+        # to_status and in change_summary.
+        event["status"] = event.get("current_status") or event.get("to_status") or "pending"
         current_status = str(event.get("current_status") or "pending")
         current_response = str(event.get("current_client_response") or "pending")
         if current_status in {"po", "lost"}:
