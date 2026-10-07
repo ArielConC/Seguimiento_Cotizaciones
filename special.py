@@ -49,7 +49,9 @@ def initialize() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 quote_id INTEGER NOT NULL REFERENCES special_quotes(id) ON DELETE CASCADE,
                 event_type TEXT NOT NULL, from_status TEXT, to_status TEXT,
-                follow_up_type TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
+                follow_up_type TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '',
+                user_id INTEGER,user_name TEXT NOT NULL DEFAULT 'Historical data',client_response TEXT,
+                change_summary TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS special_quote_comments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -96,7 +98,9 @@ def initialize() -> None:
         })
         database._ensure_columns(db, "special_quote_events", {
             "user_id":"INTEGER","user_name":"TEXT NOT NULL DEFAULT 'Historical data'",
+            "client_response":"TEXT","change_summary":"TEXT NOT NULL DEFAULT ''",
         })
+        db.execute("CREATE INDEX IF NOT EXISTS idx_special_events_review_actor ON special_quote_events(event_type,user_id,created_at)")
         db.execute(
             """INSERT INTO special_quote_comments(quote_id,body,user_name,created_at,is_legacy)
             SELECT q.id,q.comment,'Historical data',q.updated_at,1 FROM special_quotes q
@@ -466,15 +470,26 @@ def update_quote(quote_id:int,status:str,comment:str,loss_reason:str,follow_up_t
         changes={"status":status!=current["status"],"loss":loss_reason!=current["loss_reason"],"safe":int(is_safe)!=int(current["is_safe"]),
                  "invoices":invoice_changed,
                  "po_total":po_total_usd!=current["po_total_usd"],"po_date":po_date!=current["po_date"],
-                 "method":follow_up_type!=current["follow_up_type"],"comment":bool(comment)}
+                 "method":follow_up_type!=current["follow_up_type"],
+                 "response":client_response!=(current["client_response"] or "pending"),"comment":bool(comment)}
+        summary=[f"method={follow_up_type}"]
+        if changes["status"]: summary.append(f"status={current['status']}->{status}")
+        if changes["response"]: summary.append(f"response={current['client_response'] or 'pending'}->{client_response}")
+        else: summary.append(f"response={client_response}")
+        if changes["safe"]: summary.append(f"safe={int(is_safe)}")
+        if changes["comment"]: summary.append("comment=added")
+        if changes["invoices"]: summary.append(f"invoices={len(normalized_invoices)}")
+        change_summary="; ".join(summary)
         db.execute("""UPDATE special_quotes SET status=?,loss_reason=?,follow_up_type=?,is_safe=?,po_total_usd=?,po_date=?,
             comment=CASE WHEN ?<>'' THEN ? ELSE comment END,client_response=?,updated_at=?,last_reviewed_at=?,last_reviewed_by=?,
             status_changed_at=CASE WHEN status<>? THEN ? ELSE status_changed_at END WHERE id=?""",
             (status,loss_reason,follow_up_type,int(is_safe),po_total_usd,po_date,saved_comment,saved_comment,client_response,timestamp,timestamp,actor_id,status,timestamp,quote_id))
         if status=="po": po_invoices.replace(db,"special_quote_invoices",quote_id,normalized_invoices,actor_id,actor_name,timestamp)
         else: po_invoices.clear(db,"special_quote_invoices",quote_id,timestamp)
-        db.execute("""INSERT INTO special_quote_events(quote_id,event_type,from_status,to_status,follow_up_type,note,user_id,user_name,created_at)
-            VALUES(?,'review_saved',?,?,?,?,?,?,?)""",(quote_id,current["status"],status,follow_up_type,"Review saved",actor_id,actor_name,timestamp))
+        db.execute("""INSERT INTO special_quote_events(quote_id,event_type,from_status,to_status,follow_up_type,note,user_id,user_name,
+            client_response,change_summary,created_at) VALUES(?,'review_saved',?,?,?,?,?,?,?,?,?)""",
+            (quote_id,current["status"],status,follow_up_type,"Review saved",actor_id,actor_name,
+             client_response,change_summary,timestamp))
         if changes["status"]: db.execute("""INSERT INTO special_quote_events(quote_id,event_type,from_status,to_status,follow_up_type,note,user_id,user_name,created_at)
             VALUES(?,'status_changed',?,?,?,?,?,?,?)""",(quote_id,current["status"],status,follow_up_type,loss_reason if status=="lost" else "",actor_id,actor_name,timestamp))
         if saved_comment:

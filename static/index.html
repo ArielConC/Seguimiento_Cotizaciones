@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Quotation Follow-up | NT Tool</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260921.1">
+  <link rel="stylesheet" href="/static/styles.css?v=20261006.1">
 </head>
 <body>
   <div id="app" class="app-shell hidden">
@@ -21,6 +21,7 @@
         <button class="nav-item regular-nav" data-view="lost">× <span data-i18n="lost">Lost</span></button>
         <button class="nav-item regular-nav special-only" data-view="archive">▣ <span data-i18n="archive">Archive</span></button>
         <button class="nav-item regular-nav standard-only" data-view="historical">◷ <span data-i18n="historical">Historical</span></button>
+        <button class="nav-item" data-view="monthly_report">▤ <span data-i18n="monthly_report">Monthly Report</span></button>
         <button class="nav-item" data-view="reports">▥ <span data-i18n="reports">Reports</span></button>
         <button class="nav-item admin-only" data-view="users">⚙ <span data-i18n="users">Users</span></button>
       </nav>
@@ -32,7 +33,7 @@
         <div class="topbar-title"><button id="sidebar-toggle" class="icon-button sidebar-toggle" type="button" aria-label="Hide navigation" aria-expanded="true">☰</button><div><p class="eyebrow" data-i18n="quotation_management">QUOTATION MANAGEMENT</p><h1 id="page-title">Dashboard</h1></div></div>
         <div class="topbar-actions">
           <button id="system-button" class="button ghost">Workspace</button>
-          <label><span data-i18n="agent">NT Tool agent</span><select id="global-agent"><option value="">All agents</option></select></label>
+          <label id="global-agent-wrap"><span data-i18n="agent">NT Tool agent</span><select id="global-agent"><option value="">All agents</option></select></label>
           <label><span data-i18n="language">Language</span><select id="language-select"><option value="en">English</option><option value="es">Español</option><option value="ja">日本語</option></select></label>
 <button id="upload-button" class="button primary" data-i18n="upload_excel">Upload Excel</button>
 
@@ -97,6 +98,25 @@
         </article>
       </section>
 
+      <section id="view-monthly-report" class="view">
+        <article class="panel">
+          <div class="panel-heading"><div><p class="eyebrow" data-i18n="monthly_report">MONTHLY REPORT</p><h2 data-i18n="monthly_activity">Follow-up activity by management date</h2></div></div>
+          <p class="section-help" data-i18n="monthly_help">This mode uses the date each user saved a Manage follow-up, not the quotation date. Initial imports are excluded.</p>
+          <div class="monthly-controls">
+            <label><span data-i18n="start_date">Start date</span><input id="monthly-start" type="date"></label>
+            <label><span data-i18n="end_date">End date</span><input id="monthly-end" type="date"></label>
+            <label><span data-i18n="managing_user">Managing user</span><select id="monthly-user"></select></label>
+            <label><span data-i18n="result">Result</span><select id="monthly-result"><option value="managed" data-i18n="managed_quotes">Managed</option><option value="yes" data-i18n="responded">Responded</option><option value="no" data-i18n="no_response">No response</option><option value="pending" data-i18n="awaiting_response">Awaiting response</option></select></label>
+            <button id="monthly-current" class="button ghost" type="button" data-i18n="current_month">Current month</button>
+            <button id="monthly-refresh" class="button primary" type="button" data-i18n="apply_filters">Apply filters</button>
+            <button id="monthly-clear" class="button ghost" type="button" data-i18n="clear_filters">Clear filters</button>
+          </div>
+          <div id="monthly-kpis" class="monthly-kpis"></div>
+          <div class="monthly-heading"><div><h3 data-i18n="managed_quotes">Managed quotations</h3><p id="monthly-period-label" class="section-help"></p></div><div class="result-count"><strong id="monthly-count">0</strong><span data-i18n="quotations">quotations</span></div></div>
+          <div id="monthly-table" class="table-wrap"></div>
+        </article>
+      </section>
+
       <section id="view-users" class="view">
         <div class="dashboard-grid">
           <article class="panel"><div class="panel-heading"><div><p class="eyebrow" data-i18n="user_admin">USER ADMINISTRATION</p><h2 data-i18n="users">Users</h2></div></div><div id="users-table" class="table-wrap"></div></article>
@@ -154,6 +174,6 @@
     </div>
   </form>
 </dialog>
-  <script src="/static/app.js?v=20260921.1" defer></script>
+  <script src="/static/app.js?v=20261006.1" defer></script>
 </body>
 </html>

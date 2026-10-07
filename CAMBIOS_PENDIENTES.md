@@ -1,6 +1,58 @@
 # Seguimiento de cambios
 
-Actualizado el 24 de septiembre de 2026. La fase de facturas múltiples quedó implementada, migrada y validada. El reporte ejecutivo de una página y la corrección de Gestionadas/No Gestionadas ya se implementaron y validaron localmente; los apartados posteriores continúan como cambios pendientes hasta su implementación o despliegue.
+Actualizado el 7 de octubre de 2026. La fase de facturas múltiples quedó implementada, migrada y validada. El reporte ejecutivo de una página y la corrección de Gestionadas/No Gestionadas ya se implementaron y validaron localmente; los apartados posteriores continúan como cambios pendientes hasta su implementación o despliegue. El nuevo modo Monthly Report basado en actividad de seguimiento quedó implementado y validado localmente.
+
+## Cambio implementado: modo Monthly Report por actividad
+
+**Estado:** implementado y validado localmente en Follow Up Quotations USD y Special Quotations JPY. Queda listo para commit y validación posterior al despliegue en Railway.
+
+### Nuevo modo Monthly Report
+
+- [x] Agregar un nuevo modo de consulta llamado **Monthly Report**, independiente de las vistas operativas actuales y disponible en Follow Up Quotations USD y Special Quotations JPY.
+- [x] Mantener en este modo el selector de periodo y agregar un selector de **usuario gestor**, con el mes actual como selección inicial y posibilidad de consultar otros rangos de fechas.
+- [x] Mostrar claramente que el periodo seleccionado corresponde a **actividad o modificaciones realizadas**, no a la fecha original de la cotización.
+- [x] Conservar separadas las monedas y espacios: USD para Follow Up Quotations y JPY para Special Quotations, sin conversiones ni mezcla de datos.
+
+### Regla de fechas y movimientos incluidos
+
+- [x] En Monthly Report, filtrar por la fecha y hora en que se guardó cada modificación o follow-up mediante Manage.
+- [x] Registrar de forma estructurada en cada actividad el usuario autenticado que la guardó, la fecha y hora, la cotización afectada y el cambio realizado, incluyendo como mínimo estado anterior y nuevo, resultado de respuesta, método de seguimiento y comentario o referencia del evento cuando corresponda.
+- [x] Incluir una modificación dentro del periodo aunque la cotización haya sido creada o fechada en un mes anterior. Por ejemplo, una cotización de abril gestionada en septiembre debe formar parte del Monthly Report de septiembre.
+- [x] Si durante el periodo se guardaron 100 modificaciones válidas, permitir consultar esas 100 actividades aunque pertenezcan a cotizaciones de meses anteriores.
+- [x] Excluir las altas iniciales creadas por importación de Excel, migración o incorporación al sistema. Una cotización nueva solo deberá entrar en la actividad mensual después de que se guarde sobre ella una modificación o follow-up real.
+- [x] Abrir View/Details sin guardar no debe considerarse gestión ni crear un movimiento para Monthly Report.
+- [x] Usar la zona horaria configurada para México al determinar el día y el periodo de cada actividad, evitando desplazamientos causados por UTC/Railway.
+
+### Nuevo indicador Cotizaciones gestionadas
+
+- [x] Agregar junto a los cuadros de **Hubo respuesta**, **Sin respuesta** y **En espera** un cuarto cuadro llamado **Cotizaciones gestionadas**.
+- [x] Contar como gestionada una cotización que tenga al menos una modificación o follow-up guardado mediante Manage dentro del periodo seleccionado, independientemente de que haya recibido respuesta.
+- [x] Contar cotizaciones únicas en este indicador: varias modificaciones de una misma cotización dentro del periodo deben sumar una sola cotización gestionada, aunque todas sus actividades permanezcan disponibles en el detalle.
+- [x] Excluir del indicador las altas iniciales y cualquier acción que no haya guardado una modificación o follow-up.
+- [x] En Monthly Report, el filtro denominado **Usuario gestor** debe referirse exclusivamente al usuario autenticado que guardó la modificación, no al agente NT Tool asignado originalmente a la cotización.
+- [x] Al seleccionar como Usuario gestor a ARIEL CONTRERAS, mostrar las actividades que ARIEL CONTRERAS guardó durante el periodo y contar las cotizaciones únicas que él gestionó, aunque la cotización tenga asignado a otro agente NT Tool.
+- [x] Mantener visible en el detalle tanto el **usuario gestor** que hizo el cambio como el **agente NT Tool asignado** a la cotización, sin utilizar este último para limitar el reporte mensual.
+- [x] Si dos usuarios gestionaron la misma cotización durante el periodo, la cotización debe contar para cada usuario cuando se consulte individualmente. En la vista consolidada de todos los usuarios debe contarse una sola vez en Cotizaciones gestionadas, conservando en el detalle todas las actividades y sus autores.
+- [x] Hacer que los cuadros Hubo respuesta, Sin respuesta, En espera y Cotizaciones gestionadas respeten simultáneamente el periodo, espacio y Usuario gestor seleccionados.
+
+### Filtros de respuesta y gestión
+
+- [x] Agregar al filtro por estado o resultado la opción **Hubo respuesta**, que muestre las cotizaciones con al menos un follow-up registrado como respuesta dentro del periodo seleccionado.
+- [x] Agregar la opción **Gestionadas**, que muestre todas las cotizaciones con al menos una modificación o follow-up guardado dentro del periodo, aunque no hayan tenido respuesta o continúen en espera.
+- [x] Para evitar duplicados en las listas resumidas, mostrar una fila por cotización; dentro de View/Details o del desglose de actividad, permitir consultar todos los movimientos realizados durante el periodo.
+- [x] Cuando una cotización tenga varias gestiones dentro del mismo periodo, usar su gestión más reciente para clasificarla en Hubo respuesta, Sin respuesta o En espera, sin perder los eventos anteriores del historial.
+- [x] Permitir combinar Hubo respuesta o Gestionadas con el filtro de Usuario gestor y el rango de fechas sin que permanezcan filtros ocultos de otras vistas.
+- [x] Mostrar el total de resultados filtrados y una acción visible para limpiar los filtros.
+
+### Validación requerida antes de publicar
+
+- [x] Probar una cotización antigua gestionada dentro del mes, una cotización nueva sin follow-up, una nueva gestionada posteriormente y una cotización con varias gestiones durante el mismo periodo.
+- [x] Verificar que 100 eventos de gestión se conserven como 100 actividades, pero que el cuadro Cotizaciones gestionadas cuente solamente las cotizaciones únicas involucradas.
+- [x] Probar los resultados Hubo respuesta, Sin respuesta y En espera cuando una misma cotización cambie de clasificación varias veces durante el periodo.
+- [x] Confirmar que el filtro Usuario gestor se base en el usuario autenticado que guardó cada cambio, incluso cuando sea distinto del agente NT Tool asignado a la cotización.
+- [x] Verificar que cada actividad muestre con precisión qué usuario realizó qué cambio y que esa información coincida con el historial y la auditoría.
+- [x] Conciliar los conteos de los cuatro cuadros con el detalle filtrado y verificar por separado USD y JPY.
+- [x] Confirmar que este modo no cambie los datos, estados, comentarios ni reglas de las vistas operativas existentes.
 
 ## Cambio implementado: reporte ejecutivo gerencial de una página
 

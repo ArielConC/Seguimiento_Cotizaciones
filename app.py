@@ -126,6 +126,21 @@ class Handler(BaseHTTPRequestHandler):
                      "language":params.get("language",user.get("language","en"))})
         return data
 
+    def _monthly_activity(self,workspace:str,params:dict[str,str],user:dict[str,Any])->dict[str,Any]:
+        start=params.get("start",database.calendar_periods()["month_start"])
+        end=params.get("end",database.today_local().isoformat())
+        selected=str(params.get("user","")).strip().casefold()
+        if selected in {"","all"}:
+            actor_id=None if auth.can_team_reports(user) else int(user["id"])
+        else:
+            try: actor_id=int(selected)
+            except ValueError as exc: raise ValueError("Invalid report user") from exc
+            if actor_id!=int(user["id"]) and not auth.can_team_reports(user):
+                raise PermissionError("Your role cannot view another user's activity")
+            allowed_ids={int(item["id"]) for item in auth.report_users(user)}
+            if actor_id not in allowed_ids: raise ValueError("Invalid report user")
+        return database.monthly_activity(workspace,start,end,actor_id,params.get("result","managed"))
+
     def do_GET(self)->None:  # noqa: N802
         parsed=urlparse(self.path); params={key:values[0] for key,values in parse_qs(parsed.query).items()}
         try:
@@ -159,10 +174,13 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path=="/api/special/ranks": self._json(special.ranks())
             elif parsed.path=="/api/imports": self._json(imports_manager.history(params.get("workspace","standard")))
             elif parsed.path=="/api/users": self._json(auth.list_users(user))
+            elif parsed.path=="/api/report-users": self._json(auth.report_users(user))
             elif parsed.path=="/api/audit": self._json(auth.recent_audit(user,int(params.get("limit","100"))))
             elif parsed.path=="/api/backup/status": self._json(backup.status())
             elif parsed.path in {"/api/reports/range","/api/special/reports/range"}:
                 workspace="special" if "/special/" in parsed.path else "standard"; self._json(self._report(workspace,params,user))
+            elif parsed.path in {"/api/monthly-report","/api/special/monthly-report"}:
+                workspace="special" if "/special/" in parsed.path else "standard"; self._json(self._monthly_activity(workspace,params,user))
             elif parsed.path in {"/api/reports/export.pdf","/api/special/reports/export.pdf","/api/reports/export.xlsx","/api/special/reports/export.xlsx"}:
                 workspace="special" if "/special/" in parsed.path else "standard"; data=self._report(workspace,params,user)
                 language=data["language"]; slug=f"{workspace}_follow_up_{data['start_date']}_{data['end_date']}"
@@ -239,13 +257,13 @@ class Handler(BaseHTTPRequestHandler):
                     client_response=str(payload.get("client_response","pending"))
                 )
                 
-                detail=f"status={result['status']}; invoices={len(result.get('invoices',[]))}; po_total={result.get('po_total_usd') or ''}"
+                detail=f"status={result['status']}; response={result.get('client_response') or 'pending'}; method={result.get('follow_up_type') or ''}; invoices={len(result.get('invoices',[]))}; po_total={result.get('po_total_usd') or ''}"
                 auth.audit(user,"quote_review_saved","standard","quote",str(quote_id),detail=detail,ip=self._client_ip()); self._json(result)
             elif re.fullmatch(r"/api/special/quotes/\d+",parsed.path):
                 quote_id=int(parsed.path.rsplit("/",1)[1]); current=special.get_quote(quote_id)
                 if not auth.can_edit_quote(user,current["nt_agent"]): raise PermissionError("You can only manage quotations assigned to you")
                 result=special.update_quote(quote_id,str(payload.get("status","pending")),str(payload.get("comment","")),str(payload.get("loss_reason","")),str(payload.get("follow_up_type","")),bool(payload.get("is_safe",False)),payload.get("po_total"),str(payload.get("po_date") or "") or None,user,payload.get("invoices"),str(payload.get("client_response","pending")))
-                detail=f"status={result['status']}; invoices={len(result.get('invoices',[]))}; po_total={result.get('po_total_usd') or ''}"
+                detail=f"status={result['status']}; response={result.get('client_response') or 'pending'}; method={result.get('follow_up_type') or ''}; invoices={len(result.get('invoices',[]))}; po_total={result.get('po_total_usd') or ''}"
                 auth.audit(user,"quote_review_saved","special","quote",str(quote_id),detail=detail,ip=self._client_ip()); self._json(result)
             elif re.fullmatch(r"/api/users/\d+",parsed.path): self._json(auth.update_user(user,int(parsed.path.rsplit("/",1)[1]),payload))
             elif parsed.path=="/api/me/preferences": self._json(auth.update_preferences(user,str(payload.get("language","en"))))

@@ -221,6 +221,10 @@ def initialize() -> None:
                 to_status TEXT,
                 follow_up_type TEXT NOT NULL DEFAULT '',
                 note TEXT NOT NULL DEFAULT '',
+                user_id INTEGER,
+                user_name TEXT NOT NULL DEFAULT 'Historical data',
+                client_response TEXT,
+                change_summary TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL
             );
 
@@ -325,7 +329,10 @@ def initialize() -> None:
         _ensure_columns(db, "quote_events", {
             "follow_up_type": "TEXT NOT NULL DEFAULT ''", "user_id": "INTEGER",
             "user_name": "TEXT NOT NULL DEFAULT 'Historical data'",
+            "client_response": "TEXT",
+            "change_summary": "TEXT NOT NULL DEFAULT ''",
         })
+        db.execute("CREATE INDEX IF NOT EXISTS idx_events_review_actor ON quote_events(event_type,user_id,created_at)")
         db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('quotation_root',?)", (DEFAULT_QUOTATION_ROOT,))
         db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('months_back','3')")
         db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('scan_interval_seconds','300')")
@@ -799,7 +806,15 @@ def update_quote(quote_id: int, status: str, comment: str, loss_reason: str, fol
         changes = {"status":status != current["status"],"loss":loss_reason != current["loss_reason"],
                    "safe":int(is_safe) != int(current["is_safe"]),"invoices":invoice_changed,
                    "po_total":po_total_usd != current["po_total_usd"],"po_date":po_date != current["po_date"],"method":follow_up_type != current["follow_up_type"],
-                   "comment":bool(comment)}
+                   "response":client_response != (current["client_response"] or "pending"),"comment":bool(comment)}
+        summary = [f"method={follow_up_type}"]
+        if changes["status"]: summary.append(f"status={current['status']}->{status}")
+        if changes["response"]: summary.append(f"response={current['client_response'] or 'pending'}->{client_response}")
+        else: summary.append(f"response={client_response}")
+        if changes["safe"]: summary.append(f"safe={int(is_safe)}")
+        if changes["comment"]: summary.append("comment=added")
+        if changes["invoices"]: summary.append(f"invoices={len(normalized_invoices)}")
+        change_summary = "; ".join(summary)
         db.execute(
             """UPDATE quotes SET status=?,loss_reason=?,follow_up_type=?,is_safe=?,po_total_usd=?,po_date=?,
             po_detected=CASE WHEN ?='po' THEN 1 ELSE po_detected END,comment=CASE WHEN ?<>'' THEN ? ELSE comment END,
@@ -813,9 +828,10 @@ def update_quote(quote_id: int, status: str, comment: str, loss_reason: str, fol
         else:
             po_invoices.clear(db,"quote_invoices",quote_id,timestamp)
         db.execute(
-            """INSERT INTO quote_events(quote_id,event_type,from_status,to_status,follow_up_type,note,user_id,user_name,created_at)
-            VALUES(?,'review_saved',?,?,?,?,?,?,?)""",
-            (quote_id,current["status"],status,follow_up_type,"Review saved",actor_id,actor_name,timestamp),
+            """INSERT INTO quote_events(quote_id,event_type,from_status,to_status,follow_up_type,note,user_id,user_name,
+            client_response,change_summary,created_at) VALUES(?,'review_saved',?,?,?,?,?,?,?,?,?)""",
+            (quote_id,current["status"],status,follow_up_type,"Review saved",actor_id,actor_name,
+             client_response,change_summary,timestamp),
         )
         if changes["status"]:
             db.execute("""INSERT INTO quote_events(quote_id,event_type,from_status,to_status,follow_up_type,note,user_id,user_name,created_at)
@@ -907,6 +923,101 @@ def agents() -> list[str]:
     with connect() as db:
         rows = db.execute("SELECT DISTINCT nt_agent FROM quotes WHERE trim(nt_agent)<>'' ORDER BY nt_agent").fetchall()
     return [row["nt_agent"] for row in rows]
+
+
+def monthly_activity(
+    workspace: str,
+    start_date: str,
+    end_date: str,
+    actor_user_id: int | None = None,
+    result_filter: str = "managed",
+) -> dict[str, Any]:
+    """Return saved Manage activity by actor and event date, never by quote date."""
+    start_date, end_date = validate_period(start_date, end_date)
+    if not start_date:
+        raise ValueError("Start date and end date are required")
+    result_filter = str(result_filter or "managed").strip().casefold()
+    if result_filter not in {"managed", "yes", "no", "pending"}:
+        raise ValueError("Invalid monthly report result filter")
+
+    if workspace == "standard":
+        quote_table = "quotes"
+        event_table = "quote_events"
+        quote_fields = """q.folio AS folio,q.quote_date,q.end_user,q.distributor_code,q.nt_agent,
+            q.priority,q.status AS current_status,q.total_usd AS amount,q.customer_order,
+            q.is_historical,q.is_archived"""
+        visible_clause = "q.is_historical=0 AND q.is_archived=0"
+        currency = "USD"
+    elif workspace == "special":
+        quote_table = "special_quotes"
+        event_table = "special_quote_events"
+        quote_fields = """COALESCE(NULLIF(q.source_quote_number,''),printf('SPQ-%05d',q.id)) AS folio,
+            q.quote_date,q.customer_name AS end_user,q.code AS distributor_code,q.nt_agent,
+            q.priority,q.status AS current_status,q.unit_price AS amount,'' AS customer_order,
+            0 AS is_historical,q.is_archived"""
+        visible_clause = "q.is_archived=0"
+        currency = "JPY"
+    else:
+        raise ValueError("Invalid workspace")
+
+    actor_clause = " AND e.user_id=?" if actor_user_id is not None else ""
+    params: list[Any] = [start_date, end_date]
+    if actor_user_id is not None:
+        params.append(int(actor_user_id))
+    with connect() as db:
+        raw = rows_to_dicts(db.execute(
+            f"""SELECT e.id AS event_id,e.quote_id,e.from_status,e.to_status,e.follow_up_type,e.note,
+            e.user_id,e.user_name,e.created_at,
+            COALESCE(NULLIF(e.client_response,''),'pending') AS client_response,
+            COALESCE(NULLIF(e.change_summary,''),'Review saved') AS change_summary,
+            {quote_fields}
+            FROM {event_table} e JOIN {quote_table} q ON q.id=e.quote_id
+            WHERE e.event_type='review_saved' AND substr(e.created_at,1,10) BETWEEN ? AND ?
+            AND {visible_clause}{actor_clause}
+            ORDER BY datetime(e.created_at),e.id""",
+            params,
+        ).fetchall())
+
+    latest_by_quote: dict[int, dict[str, Any]] = {}
+    activity_counts: dict[int, int] = {}
+    activities: list[dict[str, Any]] = []
+    for event in raw:
+        quote_id = int(event["quote_id"])
+        response = str(event.get("client_response") or "pending")
+        if response not in {"yes", "no", "pending"}:
+            response = "pending"
+        event["client_response"] = response
+        event["status"] = event.get("to_status") or event.get("current_status") or "pending"
+        activity_counts[quote_id] = activity_counts.get(quote_id, 0) + 1
+        activities.append(event)
+        latest_by_quote[quote_id] = event
+
+    response_counts = {"yes": 0, "no": 0, "pending": 0}
+    rows: list[dict[str, Any]] = []
+    for quote_id, event in latest_by_quote.items():
+        response_counts[event["client_response"]] += 1
+        event = dict(event)
+        event["activity_count"] = activity_counts[quote_id]
+        event["last_activity_at"] = event["created_at"]
+        event["managed_by"] = event.get("user_name") or "System"
+        if result_filter != "managed" and event["client_response"] != result_filter:
+            continue
+        rows.append(event)
+    rows.sort(key=lambda row: (str(row.get("last_activity_at") or ""), int(row.get("event_id") or 0)), reverse=True)
+    activities.sort(key=lambda row: (str(row.get("created_at") or ""), int(row.get("event_id") or 0)), reverse=True)
+    return {
+        "workspace": workspace,
+        "currency": currency,
+        "start_date": start_date,
+        "end_date": end_date,
+        "actor_user_id": actor_user_id,
+        "result_filter": result_filter,
+        "activity_count": len(activities),
+        "managed_count": len(latest_by_quote),
+        "responses": response_counts,
+        "rows": rows,
+        "activities": activities,
+    }
 
 
 def executive_pipeline(rows: list[dict[str, Any]], workspace: str) -> dict[str, Any]:

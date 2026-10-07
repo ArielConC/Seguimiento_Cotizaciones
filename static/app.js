@@ -7,7 +7,12 @@ const I18N={
   es:{sales_followup:'Seguimiento de ventas',dashboard:'Resumen',priorities:'Prioridades SABC',managed:'Gestionadas',safe:'Seguras',po_missing:'PO sin fecha',lost:'Perdidas',archive:'Archivo',historical:'Históricas',reports:'Reportes',users:'Usuarios',quotation_management:'GESTIÓN DE COTIZACIONES',agent:'Agente NT Tool',language:'Idioma',upload_excel:'Subir Excel',logout:'Cerrar sesión',change_password:'Cambiar contraseña',current_password:'Contraseña actual',new_password:'Nueva contraseña',pending_total:'Total de cotizaciones pendientes',in_followup:'EN SEGUIMIENTO',priority_distribution:'Distribución por prioridad',daily_report:'REPORTE DIARIO',today_activity:'Actividad de hoy',generate_daily:'Generar reporte diario',attention:'ATENCIÓN',priority_quotes:'Cotizaciones prioritarias',view_all:'Ver todas',search:'Buscar',priority:'Prioridad',sort_by:'Ordenar por',period_activity:'Actividad de cotizaciones por periodo',report_help:'El reporte cuenta cotizaciones nuevas importadas, revisiones guardadas en Manage, cambios de estado, pérdidas y conversiones a PO del periodo seleccionado.',daily:'Diario',weekly:'Semanal',monthly:'Mensual',custom:'Rango personalizado',start_date:'Fecha inicial',end_date:'Fecha final',scope:'Alcance',generate_report:'Generar reporte',user_admin:'ADMINISTRACIÓN DE USUARIOS',create_user:'Crear usuario',display_name:'Nombre visible',role:'Rol',temporary_password:'Contraseña temporal',generate_password:'Generar contraseña temporal',temporary_password_help:'Copia la contraseña antes de guardar. El usuario deberá reemplazarla al iniciar sesión.',recent_audit:'Actividad reciente de auditoría',select_workspace:'SELECCIONAR ESPACIO',choose_system:'Elige un sistema de seguimiento',standard_help:'Cotizaciones en USD importadas desde el Excel diario.',special_help:'Artículos especiales en JPY con prioridades por percentiles.',import_data:'IMPORTAR DATOS',cancel:'Cancelar',preview:'Vista previa',confirm_import:'Confirmar importación',update_followup:'ACTUALIZAR SEGUIMIENTO',status:'Estado',followup_method:'Método de seguimiento',loss_reason:'Motivo de pérdida',po_date:'Fecha de PO',mark_safe:'Marcar como segura',new_comment:'Nuevo comentario',comment_history:'Historial de comentarios',save_review:'Guardar revisión',operation_details:'DETALLES DE LA OPERACIÓN',audit_history:'Historial de actividad',edit_user:'Editar usuario',active:'Activo',reset_password:'Restablecer contraseña',save:'Guardar',all_agents:'Todos los agentes',pending:'Pendiente',view:'Ver',manage:'Gestionar',restore:'Restaurar',added_today:'Agregadas hoy',po_today:'PO de hoy',overdue:'Seguimientos vencidos',po_date_missing:'PO sin fecha',quotations:'cotizaciones',quoted_total:'Total cotizado',po_total:'Total de PO',grand_total:'Total pendiente + PO',backup_ok:'Respaldo verificado',backup_due:'Respaldo vencido o inexistente',no_records:'No hay cotizaciones en esta vista.',read_only:'Datos históricos de solo lectura',import_complete:'Importación completada',all_team:'Todo el equipo',my_activity:'Mi actividad',new:'Nuevas',updated:'Actualizadas',unchanged:'Sin cambios',duplicates:'Duplicadas',invalid:'Inválidas',excluded:'Archivadas / ocultas',rows:'Filas',details:'Detalles',end_user:'Usuario final',company:'Distribuidor',net_total:'Total neto interno',order:'Orden del cliente',method:'Método',last_review:'Última revisión',days:'días',rank:'Rango',model:'Modelo',quantity:'Cantidad',unit_price:'Precio unitario',reason:'Motivo de pérdida',date:'Fecha',reference:'Cotización',nt_agent:'Agente NT Tool',dist_agent:'Agente distribuidor',no_comments:'No se han guardado comentarios.',no_activity:'No se ha registrado actividad.',reviewed:'Revisadas',status_changes:'Cambios de estado',converted_po:'Convertidas a PO',lost_quotes:'Cotizaciones perdidas',financial_summary:'Resumen financiero',loss_breakdown:'Motivos de pérdida',po_comparison:'Comparación QT contra PO',signin:'Entrar',initial_setup:'Configuración inicial: selecciona takujiyamada o ignacioillescas y crea la primera contraseña.',password:'Contraseña',username:'Usuario',po_invoices:'Facturas de la PO',po_invoices_help:'Agrega todas las facturas que componen esta PO. El total y la fecha de PO se calculan automáticamente.',add_invoice:'+ Agregar factura',invoice_date:'Fecha de factura',invoice_series:'Serie / folio',invoice_number:'Número / código de factura',invoice_amount:'Importe de factura',remove:'Eliminar',invoices:'Facturas',hide_navigation:'Ocultar navegación',show_navigation:'Mostrar navegación',management:'Gerencia',period:'Periodo',all_history:'Todo el historial',today:'Hoy',current_month:'Mes actual',fiscal_year:'Año fiscal',all:'Todos',distributor_code:'Código distribuidor',quote_age:'Días abierta',last_activity:'Última actividad',initial_import:'Alta inicial',stale_question:'Esta cotización tiene alta probabilidad de pérdida porque tiene más de 60 días. Revisa su estado durante este seguimiento.',color_legend:'Colores de seguimiento',no_code:'Sin código',clear_filters:'Limpiar filtros',upload_invoices:'Subir facturas',invoice_import_help:'Las facturas se relacionan mediante Texto Extra 2 únicamente con cotizaciones de PO sin fecha.'},
   ja: {sales_followup:'営業フォローアップ',dashboard:'ダッシュボード',priorities:'優先度 SABC',managed:'対応済み',safe:'安全 (Safe)',po_missing:'PO 日付なし',lost:'失注 (Lost)',archive:'アーカイブ',historical:'履歴データ',reports:'レポート',users:'ユーザー',quotation_management:'見積管理',agent:'NT担当者',language:'言語',upload_excel:'Excelアップロード',logout:'ログアウト',change_password:'パスワード変更',current_password:'現在のパスワード',new_password:'新しいパスワード',pending_total:'保留中の見積合計',in_followup:'フォローアップ中',priority_distribution:'優先度分布',daily_report:'日報',today_activity:'今日の活動',generate_daily:'日報を作成',attention:'要注意',priority_quotes:'優先見積',view_all:'すべて表示',search:'検索',priority:'優先度',sort_by:'並べ替え',period_activity:'期間別の見積活動',report_help:'選択した期間の新規見積、保存されたレビュー、ステータス変更、失注、PO変換をカウントします。',daily:'日次',weekly:'週次',monthly:'月次',custom:'カスタム範囲',start_date:'開始日',end_date:'終了日',scope:'範囲',generate_report:'レポート作成',user_admin:'ユーザー管理',create_user:'ユーザー作成',display_name:'表示名',role:'役割',temporary_password:'一時パスワード',generate_password:'一時パスワード生成',temporary_password_help:'保存する前にパスワードをコピーしてください。',recent_audit:'最近の監査活動',select_workspace:'ワークスペース選択',choose_system:'システムを選択',standard_help:'日次ExcelからインポートされたUSD見積。',special_help:'パーセンタイルベースの優先度を持つJPYの特別アイテム。',import_data:'データインポート',cancel:'キャンセル',preview:'プレビュー',confirm_import:'インポート確認',update_followup:'フォローアップ更新',status:'ステータス',followup_method:'フォローアップ方法',loss_reason:'失注理由',po_date:'PO日付',mark_safe:'安全(Safe)にマーク',new_comment:'新規コメント',comment_history:'コメント履歴',save_review:'レビューを保存',operation_details:'操作詳細',audit_history:'活動履歴',edit_user:'ユーザー編集',active:'有効',reset_password:'パスワードリセット',save:'保存',all_agents:'すべての担当者',pending:'保留中',view:'表示',manage:'管理',restore:'復元',added_today:'本日追加',po_today:'本日のPO',overdue:'期限切れのフォローアップ',po_date_missing:'PO日付なし',quotations:'件',quoted_total:'見積合計',po_total:'PO合計',grand_total:'保留中 + PO合計',backup_ok:'バックアップ確認済み',backup_due:'バックアップ期限切れ',no_records:'データがありません。',read_only:'読み取り専用の履歴データ',import_complete:'インポート完了',all_team:'全チーム',my_activity:'自分の活動',new:'新規',updated:'更新済み',unchanged:'変更なし',duplicates:'重複',invalid:'無効',excluded:'除外 / 非表示',rows:'行',details:'詳細',end_user:'エンドユーザー',company:'代理店',net_total:'社内純合計',order:'顧客注文',method:'方法',last_review:'最終レビュー',days:'日',rank:'ランク',model:'モデル',quantity:'数量',unit_price:'単価',reason:'失注理由',date:'日付',reference:'見積番号',nt_agent:'NT担当者',dist_agent:'代理店担当者',no_comments:'コメントはありません。',no_activity:'活動記録はありません。',reviewed:'レビュー済み',status_changes:'ステータス変更',converted_po:'PO変換',lost_quotes:'失注見積',financial_summary:'財務概要',loss_breakdown:'失注理由の内訳',po_comparison:'見積 vs PO',signin:'サインイン',initial_setup:'初期設定',password:'パスワード',username:'ユーザー名',po_invoices:'POの請求書',po_invoices_help:'このPOの請求書を追加します。合計と日付は自動計算されます。',add_invoice:'+ 請求書追加',invoice_date:'請求日',invoice_series:'シリーズ / フォリオ',invoice_number:'請求書番号 / コード',invoice_amount:'請求額',remove:'削除',invoices:'請求書',hide_navigation:'ナビゲーション非表示',show_navigation:'ナビゲーション表示',management:'管理 (Management)',period:'期間',all_history:'全履歴',today:'今日',current_month:'今月',fiscal_year:'会計年度',all:'すべて',distributor_code:'代理店コード',quote_age:'経過日数',last_activity:'最終活動',initial_import:'初回インポート',stale_question:'この見積は90日以上経過しています。失注しましたか？',color_legend:'行の色の凡例',no_code:'コードなし'}
 };
-const t=k=>I18N[state.language]?.[k]||I18N.en[k]||k;
+const MONTHLY_I18N={
+  en:{monthly_report:'Monthly Report',monthly_activity:'Follow-up activity by management date',monthly_help:'This mode uses the date each user saved a Manage follow-up, not the quotation date. Initial imports are excluded.',managing_user:'Managing user',all_users:'All users',result:'Result',managed_quotes:'Managed quotations',responded:'Responded',no_response:'No response',awaiting_response:'Awaiting response',apply_filters:'Apply filters',saved_activities:'saved activities',assigned_agent:'Assigned NT agent',change_made:'Change made',activity_by:'Managed by'},
+  es:{monthly_report:'Reporte mensual',monthly_activity:'Actividad de seguimiento por fecha de gestión',monthly_help:'Este modo usa la fecha en que cada usuario guardó un seguimiento en Gestionar, no la fecha de la cotización. Las altas iniciales quedan excluidas.',managing_user:'Usuario gestor',all_users:'Todos los usuarios',result:'Resultado',managed_quotes:'Cotizaciones gestionadas',responded:'Hubo respuesta',no_response:'Sin respuesta',awaiting_response:'En espera',apply_filters:'Aplicar filtros',saved_activities:'gestiones guardadas',assigned_agent:'Agente NT asignado',change_made:'Cambio realizado',activity_by:'Gestionada por'},
+  ja:{monthly_report:'月次レポート',monthly_activity:'管理日別フォローアップ活動',monthly_help:'見積日ではなく、各ユーザーが管理画面でフォローアップを保存した日付を使用します。初回インポートは除外されます。',managing_user:'管理ユーザー',all_users:'すべてのユーザー',result:'結果',managed_quotes:'管理済み見積',responded:'回答あり',no_response:'回答なし',awaiting_response:'回答待ち',apply_filters:'フィルター適用',saved_activities:'保存された活動',assigned_agent:'割り当てNT担当者',change_made:'変更内容',activity_by:'管理者',clear_filters:'フィルターをクリア'},
+};
+const t=k=>MONTHLY_I18N[state.language]?.[k]||I18N[state.language]?.[k]||MONTHLY_I18N.en[k]||I18N.en[k]||k;
 const currency=()=>state.system==='special'?'JPY':'USD';
 const locale=()=>state.language==='es'?'es-MX':state.language==='ja'?'ja-JP':'en-US';
 const money=v=>new Intl.NumberFormat(locale(),{style:'currency',currency:currency(),maximumFractionDigits:currency()==='JPY'?0:2}).format(Number(v||0));
@@ -220,14 +225,19 @@ async function loadRanks(){if(state.system!=='special')return;const ranks=await 
   $('#rank-filter').innerHTML='<option value="">All</option>'+ranks.map(r=>`<option>${esc(r)}</option>`).join('');}
 
 async function navigate(view){
-  if(state.me?.management_profile&&!['management','reports','users'].includes(view))view='management';
+  if(state.me?.management_profile&&!['management','monthly_report','reports','users'].includes(view))view='management';
   state.view=view;
   $$('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
   $$('.view').forEach(v=>v.classList.remove('active'));
-  const titles={dashboard:t('dashboard'),management:t('management'),pending:t('priorities'),managed:t('managed'),safe:t('safe'),po_missing:t('po_missing'),po:'PO',lost:t('lost'),archive:t('archive'),historical:t('historical'),reports:t('reports'),users:t('users')};
+  const titles={dashboard:t('dashboard'),management:t('management'),pending:t('priorities'),managed:t('managed'),safe:t('safe'),po_missing:t('po_missing'),po:'PO',lost:t('lost'),archive:t('archive'),historical:t('historical'),monthly_report:t('monthly_report'),reports:t('reports'),users:t('users')};
   $('#page-title').textContent=titles[view]||view;
-  await updateGlobalTotal();
+  const monthly=view==='monthly_report';
+  $('#dashboard-period-controls').classList.toggle('hidden',monthly);
+  $('#pending-total-banner').classList.toggle('hidden',monthly);
+  $('#global-agent-wrap').classList.toggle('hidden',monthly);
+  if(!monthly)await updateGlobalTotal();
   if(view==='dashboard'){$('#view-dashboard').classList.add('active');await renderDashboard();}
+  else if(view==='monthly_report'){$('#view-monthly-report').classList.add('active');await renderMonthlyReport();}
   else if(view==='reports'){$('#view-reports').classList.add('active');setPreset('daily');await renderReport();}
   else if(view==='users'){$('#view-users').classList.add('active');await renderUsers();}
   else{$('#view-list').classList.add('active');await renderList();}
@@ -488,7 +498,7 @@ async function openView(id){
     $('#view-invoices-section').classList.toggle('hidden',!showInvoices);
     $('#view-invoices').innerHTML=showInvoices?invoicesHtml(q.invoices):'';
     $('#view-comments').innerHTML=commentsHtml(q.comments);
-    $('#view-events').innerHTML=q.events?.length?q.events.slice().reverse().map(e=>`<div class="history-item"><strong>${esc(eventLabel(e.event_type))}</strong><time>${esc(e.user_name||'System')} · ${fmtDT(e.created_at)}</time><p>${esc(e.note||'')}</p></div>`).join(''):`<p class="muted">${t('no_activity')}</p>`;
+    $('#view-events').innerHTML=q.events?.length?q.events.slice().reverse().map(e=>`<div class="history-item"><strong>${esc(eventLabel(e.event_type))}</strong><time>${esc(e.user_name||'System')} · ${fmtDT(e.created_at)}</time><p>${esc(e.change_summary?monthlyChangeLabel(e.change_summary):(e.note||''))}</p></div>`).join(''):`<p class="muted">${t('no_activity')}</p>`;
     $('#view-dialog').showModal();
   }catch(e){toast(e.message,true);}
 }
@@ -593,6 +603,58 @@ $('#clear-list-filters').addEventListener('click',()=>{
   $('#distributor-filter').value='';$('#end-user-filter').value='';$('#quote-order').value='priority';
   renderList().catch(e=>toast(e.message,true));
 });
+
+function setMonthlyCurrentPeriod(){
+  $('#monthly-start').value=state.calendar?.month_start||isoLocal(new Date(businessToday().getFullYear(),businessToday().getMonth(),1));
+  $('#monthly-end').value=state.calendar?.today||isoLocal(businessToday());
+}
+async function loadMonthlyUsers(){
+  const select=$('#monthly-user');const previous=select.value;
+  const users=await api('/api/report-users');
+  const options=state.me?.can_team_reports?`<option value="all">${t('all_users')}</option>`:'';
+  select.innerHTML=options+users.map(user=>`<option value="${Number(user.id)}">${esc(user.display_name)}</option>`).join('');
+  const preferred=previous||String(state.me.id);
+  select.value=[...select.options].some(option=>option.value===preferred)?preferred:String(state.me.id);
+}
+function responseLabel(value){return value==='yes'?t('responded'):value==='no'?t('no_response'):t('awaiting_response');}
+function monthlyChangeLabel(value){
+  return String(value||'').split(';').map(part=>{
+    const [key,raw='']=part.trim().split('=');
+    if(key==='method')return `${t('method')}: ${methodLabel(raw)}`;
+    if(key==='status'){const [from,to]=raw.split('->');return `${t('status')}: ${statusLabel(from)} → ${statusLabel(to)}`;}
+    if(key==='response'){const values=raw.split('->');return `${t('result')}: ${values.map(responseLabel).join(' → ')}`;}
+    if(key==='comment')return state.language==='es'?'Comentario agregado':state.language==='ja'?'コメント追加':'Comment added';
+    if(key==='safe')return raw==='1'?(state.language==='es'?'Marcada segura':'Marked Safe'):(state.language==='es'?'Segura retirada':'Safe removed');
+    if(key==='invoices')return `${t('invoices')}: ${raw}`;
+    return part.trim();
+  }).filter(Boolean).join(' · ');
+}
+function monthlyTable(rows){
+  if(!rows.length)return `<div class="empty">${t('no_records')}</div>`;
+  const head=`<tr><th>${t('last_activity')}</th><th>${t('reference')}</th><th>${t('activity_by')}</th><th>${t('assigned_agent')}</th><th>${t('result')}</th><th>${t('method')}</th><th>${t('status')}</th><th>${t('change_made')}</th><th>${t('quoted_total')}</th><th></th></tr>`;
+  const body=rows.map(row=>`<tr><td>${fmtDT(row.last_activity_at)}</td><td class="folio">${esc(row.folio)}</td><td>${esc(row.managed_by)}</td><td>${esc(row.nt_agent)||'—'}</td><td><span class="response-badge ${row.client_response}">${responseLabel(row.client_response)}</span></td><td>${methodLabel(row.follow_up_type)}</td><td><span class="status ${row.status}">${statusLabel(row.status)}</span></td><td class="change-summary">${esc(monthlyChangeLabel(row.change_summary))}<span class="initial-badge activity-count">${Number(row.activity_count||0)} ${t('saved_activities')}</span></td><td class="money">${money(row.amount)}</td><td><button class="manage view-btn" data-id="${Number(row.quote_id)}">${t('view')}</button></td></tr>`).join('');
+  return `<table><thead>${head}</thead><tbody>${body}</tbody></table>`;
+}
+async function renderMonthlyReport(){
+  if(!$('#monthly-start').value||!$('#monthly-end').value)setMonthlyCurrentPeriod();
+  await loadMonthlyUsers();
+  const start=$('#monthly-start').value;const end=$('#monthly-end').value;
+  if(end<start)throw new Error(state.language==='es'?'La fecha final no puede ser anterior a la inicial.':'End date cannot be before start date.');
+  const params=new URLSearchParams({start,end,user:$('#monthly-user').value,result:$('#monthly-result').value});
+  const data=await api(`${prefix()}/monthly-report?${params}`);const responses=data.responses||{yes:0,no:0,pending:0};
+  const cards=[['yes',responses.yes,t('responded'),'responded'],['no',responses.no,t('no_response'),'no-response'],['pending',responses.pending,t('awaiting_response'),'awaiting'],['managed',data.managed_count,t('managed_quotes'),'managed']];
+  $('#monthly-kpis').innerHTML=cards.map(([value,count,label,style])=>`<button type="button" class="monthly-kpi ${style}${$('#monthly-result').value===value?' active':''}" data-monthly-result="${value}"><strong>${Number(count||0)}</strong><span>${label}</span></button>`).join('');
+  $$('[data-monthly-result]').forEach(button=>button.addEventListener('click',()=>{$('#monthly-result').value=button.dataset.monthlyResult;renderMonthlyReport().catch(e=>toast(e.message,true));}));
+  $('#monthly-period-label').textContent=`${fmtDate(data.start_date)} – ${fmtDate(data.end_date)} · ${data.activity_count} ${t('saved_activities')}`;
+  $('#monthly-count').textContent=data.rows.length;
+  $('#monthly-table').innerHTML=monthlyTable(data.rows);
+  wireRows();
+}
+$('#monthly-current').addEventListener('click',()=>{setMonthlyCurrentPeriod();renderMonthlyReport().catch(e=>toast(e.message,true));});
+$('#monthly-refresh').addEventListener('click',()=>renderMonthlyReport().catch(e=>toast(e.message,true)));
+$('#monthly-clear').addEventListener('click',()=>{setMonthlyCurrentPeriod();$('#monthly-user').value=state.me?.can_team_reports?'all':String(state.me?.id||'');$('#monthly-result').value='managed';renderMonthlyReport().catch(e=>toast(e.message,true));});
+$('#monthly-user').addEventListener('change',()=>renderMonthlyReport().catch(e=>toast(e.message,true)));
+$('#monthly-result').addEventListener('change',()=>renderMonthlyReport().catch(e=>toast(e.message,true)));
 
 function setPreset(kind){const today=businessToday();let start=new Date(today);if(kind==='weekly'){const day=(today.getDay()+6)%7;start.setDate(today.getDate()-day);}if(kind==='monthly')start=new Date(`${state.calendar?.month_start||isoLocal(new Date(today.getFullYear(),today.getMonth(),1))}T12:00:00`);const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;if(kind!=='custom'){$('#report-start').value=iso(start);$('#report-end').value=iso(today);}} $$('.report-preset').forEach(b=>b.addEventListener('click',async()=>{setPreset(b.dataset.period);if(b.dataset.period!=='custom')await renderReport();}));$('#dashboard-report').addEventListener('click',()=>{setPreset('daily');navigate('reports');});
 function reportQuery(){return new URLSearchParams({start:$('#report-start').value,end:$('#report-end').value,scope:$('#report-scope').value,agent:$('#global-agent').value,language:state.language});}

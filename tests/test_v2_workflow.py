@@ -378,6 +378,8 @@ class V2WorkflowTests(unittest.TestCase):
         self.assertEqual(javascript.count("$('#user-edit-form').addEventListener('submit'"),1)
         self.assertNotIn("confirm(",javascript)
         self.assertIn('id="stale-warning"',html)
+        self.assertIn('id="monthly-clear"',html)
+        self.assertIn("$('#monthly-clear').addEventListener",javascript)
         self.assertIn('<option value="ja">',html)
         self.assertIn("Perfil de visualización",javascript)
         japanese=auth.update_preferences(self.user,"ja")
@@ -399,6 +401,93 @@ class V2WorkflowTests(unittest.TestCase):
         updated=special.update_quote(special_quote["id"],"pending","","","call",False,None,None,self.user,client_response="no")
         self.assertEqual(updated["client_response"],"no")
         self.assertEqual(special.dashboard()["responses"]["no"],1)
+
+    def test_monthly_activity_uses_saved_reviews_and_managing_user(self)->None:
+        preview=imports_manager.preview("standard",standard_book(),"daily.xlsx",self.user)
+        imports_manager.confirm("standard",preview["token"],self.user)
+        quotes=database.list_quotes({})
+        first=next(row for row in quotes if row["folio"]=="QT-100")
+        second=next(row for row in quotes if row["folio"]=="QTI-101")
+        with database.connect() as db:
+            db.execute("UPDATE quotes SET quote_date='2026-04-01' WHERE id=?",(first["id"],))
+        with database.connect() as db:
+            other=dict(db.execute("SELECT * FROM users WHERE username='eleonorbarragan'").fetchone())
+
+        database.update_quote(first["id"],"pending","First contact","","email",False,None,None,self.user,client_response="yes")
+        database.update_quote(first["id"],"pending","Second contact","","call",False,None,None,self.user,client_response="yes")
+        database.update_quote(second["id"],"pending","Awaiting reply","","visit",False,None,None,self.user,client_response="pending")
+        database.update_quote(first["id"],"pending","No later response","","call",False,None,None,other,client_response="no")
+        today=database.today_local().isoformat()
+
+        mine=database.monthly_activity("standard",today,today,self.user["id"])
+        self.assertEqual((mine["activity_count"],mine["managed_count"]),(3,2))
+        self.assertEqual(mine["responses"],{"yes":1,"no":0,"pending":1})
+        self.assertEqual({row["folio"] for row in mine["rows"]},{"QT-100","QTI-101"})
+        self.assertEqual(next(row for row in mine["rows"] if row["folio"]=="QT-100")["activity_count"],2)
+        self.assertEqual(database.monthly_activity("standard",today,today,self.user["id"],"yes")["rows"][0]["folio"],"QT-100")
+
+        theirs=database.monthly_activity("standard",today,today,other["id"])
+        self.assertEqual((theirs["activity_count"],theirs["managed_count"]),(1,1))
+        self.assertEqual(theirs["responses"],{"yes":0,"no":1,"pending":0})
+        self.assertEqual(theirs["rows"][0]["managed_by"],"ELEONOR BARRAGAN")
+
+        team=database.monthly_activity("standard",today,today,None)
+        self.assertEqual((team["activity_count"],team["managed_count"]),(4,2))
+        self.assertEqual(team["responses"],{"yes":0,"no":1,"pending":1})
+        with database.connect() as db:
+            event=db.execute("SELECT client_response,change_summary,user_id FROM quote_events WHERE event_type='review_saved' ORDER BY id LIMIT 1").fetchone()
+        self.assertEqual(event["client_response"],"yes")
+        self.assertEqual(event["user_id"],self.user["id"])
+        self.assertIn("response=pending->yes",event["change_summary"])
+
+    def test_monthly_activity_supports_special_quotations(self)->None:
+        preview=imports_manager.preview("special",special_book(),"special.xlsx",self.user)
+        imports_manager.confirm("special",preview["token"],self.user)
+        quote=special.list_quotes({})[0]
+        special.update_quote(quote["id"],"pending","Supplier answered","","email",False,None,None,self.user,client_response="yes")
+        today=database.today_local().isoformat()
+        data=database.monthly_activity("special",today,today,self.user["id"],"yes")
+        self.assertEqual(data["currency"],"JPY")
+        self.assertEqual((data["activity_count"],data["managed_count"],len(data["rows"])),(1,1,1))
+        self.assertEqual(data["rows"][0]["client_response"],"yes")
+
+    def test_monthly_activity_keeps_one_hundred_events_and_one_unique_quote(self)->None:
+        preview=imports_manager.preview("standard",standard_book(),"daily.xlsx",self.user)
+        imports_manager.confirm("standard",preview["token"],self.user)
+        quote=next(row for row in database.list_quotes({}) if row["folio"]=="QT-100")
+        for index in range(100):
+            response=("yes","no","pending")[index%3]
+            database.update_quote(quote["id"],"pending","","","email",False,None,None,self.user,client_response=response)
+        today=database.today_local().isoformat()
+        data=database.monthly_activity("standard",today,today,self.user["id"])
+        self.assertEqual(data["activity_count"],100)
+        self.assertEqual(data["managed_count"],1)
+        self.assertEqual(data["rows"][0]["activity_count"],100)
+        self.assertEqual(len(data["activities"]),100)
+
+    def test_monthly_activity_uses_mexico_calendar_date_and_honest_legacy_response(self)->None:
+        preview=imports_manager.preview("standard",standard_book(),"daily.xlsx",self.user)
+        imports_manager.confirm("standard",preview["token"],self.user)
+        quote=next(row for row in database.list_quotes({}) if row["folio"]=="QT-100")
+        database.update_quote(quote["id"],"pending","","","email",False,None,None,self.user,client_response="yes")
+        with database.connect() as db:
+            db.execute(
+                "UPDATE quote_events SET created_at='2026-09-30T23:59:59-06:00',client_response=NULL WHERE event_type='review_saved'"
+            )
+        september=database.monthly_activity("standard","2026-09-01","2026-09-30",self.user["id"])
+        october=database.monthly_activity("standard","2026-10-01","2026-10-31",self.user["id"])
+        self.assertEqual((september["activity_count"],october["activity_count"]),(1,0))
+        self.assertEqual(september["responses"],{"yes":0,"no":0,"pending":1})
+
+    def test_report_user_selector_respects_permissions_and_minimizes_account_data(self)->None:
+        team=auth.report_users(self.user)
+        self.assertEqual(len(team),4)
+        self.assertNotIn("username",team[0])
+        with database.connect() as db:
+            regular=dict(db.execute("SELECT * FROM users WHERE username='eleonorbarragan'").fetchone())
+        mine=auth.report_users(regular)
+        self.assertEqual([row["id"] for row in mine],[regular["id"]])
+        self.assertNotIn("username",mine[0])
 
     def test_managed_status_grouping_and_activity_timestamp(self)->None:
         preview=imports_manager.preview("standard",standard_book(),"daily.xlsx",self.user)

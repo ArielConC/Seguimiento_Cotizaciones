@@ -260,6 +260,22 @@ def list_users(requester: dict[str, Any]) -> list[dict[str, Any]]:
     return [_public(row) for row in rows]
 
 
+def report_users(requester: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the users selectable as activity authors without exposing account secrets."""
+    if can_team_reports(requester):
+        with database.connect() as db:
+            rows = db.execute(
+                "SELECT id,display_name,agent_name,active FROM users WHERE active=1 ORDER BY display_name"
+            ).fetchall()
+        return [dict(row) for row in rows]
+    return [{
+        "id": int(requester["id"]),
+        "display_name": requester.get("display_name", ""),
+        "agent_name": requester.get("agent_name", ""),
+        "active": 1,
+    }]
+
+
 def create_user(requester: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     if not can_admin(requester): raise PermissionError("Administrator permission required")
     username = str(payload.get("username", "")).strip().replace(" ", "").lower()
