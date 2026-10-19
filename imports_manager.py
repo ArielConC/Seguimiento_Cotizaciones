@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import base64
 import json
 import re
 import secrets
@@ -11,6 +12,7 @@ from typing import Any
 import auth
 import database
 import special
+import db_backend
 
 
 def _safe_name(filename: str) -> str:
@@ -26,22 +28,31 @@ def preview(workspace: str, content: bytes, filename: str, user: dict[str, Any])
     filename = _safe_name(filename)
     result = database.preview_workbook(content, filename) if workspace == "standard" else special.preview_workbook(content, filename)
     token = secrets.token_urlsafe(24)
-    pending = database.IMPORT_DIR / "pending"
-    pending.mkdir(parents=True, exist_ok=True)
     suffix = Path(filename).suffix.casefold()
-    stored = pending / f"{token}{suffix if suffix in {'.xlsx','.txt'} else '.bin'}"
-    stored.write_bytes(content)
+    stored: Path | None = None
+    stored_path = f"database://imports/{token}"
+    if not db_backend.is_postgres():
+        pending = database.IMPORT_DIR / "pending"
+        pending.mkdir(parents=True, exist_ok=True)
+        stored = pending / f"{token}{suffix if suffix in {'.xlsx','.txt'} else '.bin'}"
+        stored.write_bytes(content)
+        stored_path = str(stored)
     file_hash = hashlib.sha256(content).hexdigest()
     with database.connect() as db:
         cursor = db.execute(
             """INSERT INTO imports(token,workspace,filename,stored_path,file_hash,status,rows_seen,inserted,updated,
             duplicates,archived,errors,error_detail,preview_json,user_id,user_name,created_at)
             VALUES(?,?,?,?,?,'preview',?,0,?,?,?,?,?,?,?,?,?)""",
-            (token,workspace,filename,str(stored),file_hash,result["rows_seen"],result["updated"],result["duplicates"],
+            (token,workspace,filename,stored_path,file_hash,result["rows_seen"],result["updated"],result["duplicates"],
              result.get("archived",0),result["errors"],json.dumps(result.get("error_detail",[]),ensure_ascii=False),
              json.dumps(result,ensure_ascii=False,default=str),user["id"],user["display_name"],database.now_iso()),
         )
         import_id=int(cursor.lastrowid)
+        if db_backend.is_postgres():
+            db.execute(
+                "INSERT INTO import_payloads(token,content_base64,created_at) VALUES(?,?,?)",
+                (token,base64.b64encode(content).decode("ascii"),database.now_iso()),
+            )
     auth.audit(user,"import_previewed",workspace,"import",str(import_id),f"{filename}: {result['rows_seen']} rows")
     return {**result,"token":token,"import_id":import_id,"filename":filename,"file_hash":file_hash}
 
@@ -53,20 +64,34 @@ def confirm(workspace: str, token: str, user: dict[str, Any]) -> dict[str, Any]:
     if not row: raise KeyError("Import preview not found")
     if row["status"] != "preview": raise ValueError("This import has already been processed")
     if row["user_id"] != user["id"] and not auth.can_admin(user): raise PermissionError("This preview belongs to another user")
-    path=Path(row["stored_path"])
-    if not path.is_file(): raise FileNotFoundError("The temporary import file is no longer available")
-    content=path.read_bytes()
+    path: Path | None = None
+    if db_backend.is_postgres():
+        with database.connect() as db:
+            payload=db.execute("SELECT content_base64 FROM import_payloads WHERE token=?",(token,)).fetchone()
+        if not payload: raise FileNotFoundError("The temporary import file is no longer available")
+        content=base64.b64decode(str(payload["content_base64"]),validate=True)
+    else:
+        path=Path(row["stored_path"])
+        if not path.is_file(): raise FileNotFoundError("The temporary import file is no longer available")
+        content=path.read_bytes()
     result=database.import_workbook(content,row["filename"],user,row["id"]) if workspace=="standard" else special.import_workbook(content,row["filename"],user,row["id"])
-    now=datetime.now().astimezone(); archive_dir=database.IMPORT_DIR/workspace/str(now.year)/f"{now.month:02d}"
-    archive_dir.mkdir(parents=True,exist_ok=True)
-    target=archive_dir/f"{now:%Y%m%d_%H%M%S}_{row['id']}_{_safe_name(row['filename'])}"
-    path.replace(target)
+    now=datetime.now().astimezone()
+    if db_backend.is_postgres():
+        target=Path(f"database-import-{row['id']}-{_safe_name(row['filename'])}")
+    else:
+        archive_dir=database.IMPORT_DIR/workspace/str(now.year)/f"{now.month:02d}"
+        archive_dir.mkdir(parents=True,exist_ok=True)
+        target=archive_dir/f"{now:%Y%m%d_%H%M%S}_{row['id']}_{_safe_name(row['filename'])}"
+        assert path is not None
+        path.replace(target)
     with database.connect() as db:
         db.execute("""UPDATE imports SET stored_path=?,status='confirmed',rows_seen=?,inserted=?,updated=?,duplicates=?,
             archived=?,errors=?,error_detail=?,confirmed_at=? WHERE id=?""",
             (str(target),result["rows_seen"],result["inserted"],result["updated"],result.get("duplicates",0),
              result.get("archived",0),result["errors"],json.dumps(result.get("error_detail",[]),ensure_ascii=False),
              database.now_iso(),row["id"]))
+        if db_backend.is_postgres():
+            db.execute("DELETE FROM import_payloads WHERE token=?",(token,))
     auth.audit(user,"import_confirmed",workspace,"import",str(row["id"]),json.dumps(result,ensure_ascii=False,default=str))
     return {**result,"import_id":row["id"],"archive_path":str(target)}
 

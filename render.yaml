@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: seguimiento-cotizaciones-nt
+    runtime: docker
+    plan: free
+    region: virginia
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: NT_QUOTE_HOST
+        value: 0.0.0.0
+      - key: NT_QUOTE_NO_BROWSER
+        value: "1"
+      - key: NT_QUOTE_COOKIE_SECURE
+        value: "1"
+      - key: NT_QUOTE_TRUST_PROXY
+        value: "1"
+      - key: NT_QUOTE_TIME_ZONE
+        value: America/Mexico_City
+      - key: NT_QUOTE_TEMP_DIR
+        value: /tmp/quotation-follow-up

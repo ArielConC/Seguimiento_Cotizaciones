@@ -72,6 +72,12 @@ def initialize() -> None:
                 units_per_usd REAL NOT NULL,rows_seen INTEGER NOT NULL,inserted INTEGER NOT NULL,
                 updated INTEGER NOT NULL,errors INTEGER NOT NULL,error_detail TEXT NOT NULL DEFAULT '',imported_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS special_daily_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                note_date TEXT NOT NULL,
+                note TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
             CREATE INDEX IF NOT EXISTS idx_special_status ON special_quotes(status);
             CREATE INDEX IF NOT EXISTS idx_special_agent ON special_quotes(nt_agent);
             CREATE INDEX IF NOT EXISTS idx_special_date ON special_quotes(quote_date);
@@ -544,9 +550,10 @@ def dashboard(agent:str="",start:str="",end:str="")->dict[str,Any]:
         po={key:(value or 0) for key,value in po.items()}
         counts={**pending,**po,"lost":lost or 0,"total":int(pending["all_pending"])+int(po["po"])+int(lost or 0)}
         effective_response=database.effective_response_case("q","special_quote_events")
-        responses_raw=database.rows_to_dicts(db.execute(f"""SELECT {effective_response} AS client_response,COUNT(*) AS count
-            FROM special_quotes q WHERE q.is_archived=0 {agent_clause}{quote_period}
-            GROUP BY {effective_response}""",quote_params).fetchall())
+        responses_raw=database.rows_to_dicts(db.execute(f"""SELECT client_response,COUNT(*) AS count FROM (
+            SELECT {effective_response} AS client_response
+            FROM special_quotes q WHERE q.is_archived=0 {agent_clause}{quote_period}) AS response_rows
+            GROUP BY client_response""",quote_params).fetchall())
         responses={"yes":0,"no":0,"pending":0}
         for row in responses_raw:
             value=row.get("client_response") or "pending"

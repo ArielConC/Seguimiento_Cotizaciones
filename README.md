@@ -98,10 +98,14 @@ http://SERVER-NAME:8765
 
 Do not place the live SQLite database in Dropbox. Keep the database on the server's local disk and use Dropbox only for backup copies and archived source files.
 
-## Railway cloud deployment
+## Cloud deployment
 
-The application is cloud-ready for a single Railway service backed by one persistent volume. It reads Railway's `PORT`, stores all durable data under `RAILWAY_VOLUME_MOUNT_PATH` or `NT_QUOTE_DATA_DIR`, enables secure cookies and trusted proxy IP handling in Railway, and exposes `/health` for deployment checks. Railway startup is intentionally refused when no persistent volume is configured, preventing accidental use of an ephemeral database.
+The current production target is one free Render Web Service connected to a pooled Neon PostgreSQL database. When `DATABASE_URL` exists, all durable business data and pending import payloads are stored in PostgreSQL; Render's disk is used only for temporary reports and downloadable logical backups. Secure cookies, trusted proxy handling, the dynamic `PORT`, and `/health` are configured by `render.yaml`.
 
-POs support one or more invoices in both workspaces. Each invoice stores its date, series/folio, invoice number and amount; the PO total is their sum and the PO date is the latest invoice date. Existing PO totals are migrated automatically to a single `LEGACY` invoice when the application starts. Always upload a verified database backup to Railway and keep the service at one replica.
+Local use remains compatible with SQLite when `DATABASE_URL` is absent. The older Railway deployment with a persistent volume is also retained for recovery compatibility, but Railway startup is intentionally refused when no persistent volume is configured.
+
+See `DEPLOY_RENDER_NEON.md` for the controlled SQLite migration, Render Blueprint setup, logical backup, and restoration procedure. Never commit `DATABASE_URL` or any `.env` file.
+
+POs support one or more invoices in both workspaces. Each invoice stores its date, series/folio, invoice number and amount; the PO total is their sum and the PO date is the latest invoice date. Existing PO totals are migrated automatically to a single `LEGACY` invoice when the application starts.
 
 See [DEPLOY_RAILWAY.md](DEPLOY_RAILWAY.md) for the complete setup, database migration, backup, and cutover procedure. Keep the service at one replica while SQLite is in use.

@@ -31,7 +31,7 @@ STATIC_DIR=APP_DIR/"static"
 HOST=os.environ.get("NT_QUOTE_HOST","0.0.0.0")
 PORT=int(os.environ.get("PORT") or os.environ.get("NT_QUOTE_PORT","8765"))
 COOKIE_NAME="nt_quote_session"
-CLOUD_DEPLOYMENT=bool(os.environ.get("RAILWAY_ENVIRONMENT_ID"))
+CLOUD_DEPLOYMENT=bool(os.environ.get("RAILWAY_ENVIRONMENT_ID") or os.environ.get("RENDER") or os.environ.get("DATABASE_URL"))
 COOKIE_SECURE=os.environ.get("NT_QUOTE_COOKIE_SECURE","1" if CLOUD_DEPLOYMENT else "0")=="1"
 TRUST_PROXY=os.environ.get("NT_QUOTE_TRUST_PROXY","1" if CLOUD_DEPLOYMENT else "0")=="1"
 
@@ -180,20 +180,8 @@ class Handler(BaseHTTPRequestHandler):
             # --- NUEVO ENDPOINT PARA DESCARGAR EL BACKUP ---
             elif parsed.path == "/api/backup/download":
                 if not auth.can_admin(user): raise PermissionError("Administrator permission required")
-                
-                # Importar glob y os si no estuvieran ya listos (pero Path ya está importado)
-                backups_dir = Path("/data/backups")
-                archivos = list(backups_dir.glob("cotizaciones_*.db"))
-                
-                if not archivos:
-                    # Al lanzar KeyError, tu manejador _handle_error devolverá automáticamente un 404
-                    raise KeyError("No se encontraron backups disponibles")
-                    
-                # Ordenar para obtener el más reciente (posición 0 al invertir el orden)
-                ultimo_backup = sorted(archivos, reverse=True)[0]
-                content = ultimo_backup.read_bytes()
-                
-                self._download(content, "application/octet-stream", ultimo_backup.name)
+                content,filename=backup.latest_download()
+                self._download(content, "application/octet-stream", filename)
             # -----------------------------------------------
             elif parsed.path in {"/api/reports/range","/api/special/reports/range"}:
                 workspace="special" if "/special/" in parsed.path else "standard"; self._json(self._report(workspace,params,user))

@@ -63,6 +63,29 @@ class CloudDeploymentTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Persistent storage is required on Railway", result.stderr)
 
+    def test_render_uses_postgresql_temp_storage_and_secure_proxy_defaults(self) -> None:
+        result = self._run(
+            "import json,app,database,db_backend; print(json.dumps({'port':app.PORT,'data':str(database.DATA_DIR),"
+            "'secure':app.COOKIE_SECURE,'proxy':app.TRUST_PROXY,'backend':db_backend.backend_name()}))",
+            {
+                "PORT": "10000",
+                "RENDER": "true",
+                "DATABASE_URL": "postgresql://example.invalid/neondb",
+                "RAILWAY_ENVIRONMENT_ID": None,
+                "RAILWAY_VOLUME_MOUNT_PATH": None,
+                "NT_QUOTE_DATA_DIR": None,
+                "NT_QUOTE_COOKIE_SECURE": None,
+                "NT_QUOTE_TRUST_PROXY": None,
+            },
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        values = json.loads(result.stdout.strip())
+        self.assertEqual(values["port"], 10000)
+        self.assertEqual(values["backend"], "postgresql")
+        self.assertTrue(values["secure"])
+        self.assertTrue(values["proxy"])
+        self.assertIn("quotation-follow-up", values["data"])
+
 
 if __name__ == "__main__":
     unittest.main()

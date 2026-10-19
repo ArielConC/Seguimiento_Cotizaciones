@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
+import tempfile
 from datetime import date, datetime
 from decimal import Decimal
 from io import BytesIO
@@ -14,6 +15,7 @@ from openpyxl import load_workbook
 
 import po_invoices
 import distributors
+import db_backend
 from parser import QuoteData, priority_for_total
 from tabular_text import tab_delimited_rows
 
@@ -28,6 +30,8 @@ def _resolve_data_dir() -> Path:
         return Path(configured)
     if railway_volume:
         return Path(railway_volume)
+    if db_backend.is_postgres():
+        return Path(os.environ.get("NT_QUOTE_TEMP_DIR", Path(tempfile.gettempdir()) / "quotation-follow-up"))
     if os.environ.get("RAILWAY_ENVIRONMENT_ID"):
         raise RuntimeError(
             "Persistent storage is required on Railway. Attach a volume at /data "
@@ -47,14 +51,6 @@ REVIEW_EVENT_TYPES = (
     "review_saved", "reviewed", "comment_added", "comment_updated",
     "status_changed", "safe_changed", "po_date_updated", "po_total_updated",
 )
-
-
-class ClosingConnection(sqlite3.Connection):
-    def __exit__(self, exc_type, exc_value, traceback) -> bool:
-        try:
-            return super().__exit__(exc_type, exc_value, traceback)
-        finally:
-            self.close()
 
 
 def local_now() -> datetime:
@@ -162,25 +158,31 @@ def decorate_quote(row: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
-def connect() -> sqlite3.Connection:
+def connect():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(DB_PATH, timeout=30, factory=ClosingConnection)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
-    connection.execute("PRAGMA journal_mode = WAL")
-    connection.execute("PRAGMA busy_timeout = 30000")
-    return connection
+    return db_backend.connect(DB_PATH)
 
 
-def _ensure_columns(db: sqlite3.Connection, table: str, definitions: dict[str, str]) -> None:
-    present = {row["name"] for row in db.execute(f"PRAGMA table_info({table})").fetchall()}
+def _ensure_columns(db, table: str, definitions: dict[str, str]) -> None:
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table):
+        raise ValueError("Invalid schema table")
+    if db_backend.is_postgres():
+        present = {
+            row["column_name"]
+            for row in db.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=?",
+                (table,),
+            ).fetchall()
+        }
+    else:
+        present = {row["name"] for row in db.execute(f"PRAGMA table_info({table})").fetchall()}
     for name, definition in definitions.items():
         if name not in present:
             db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
 
 
 def backfill_review_metadata(
-    db: sqlite3.Connection, quote_table: str, event_table: str, comment_table: str
+    db, quote_table: str, event_table: str, comment_table: str
 ) -> None:
     """Recover review timestamps created before last_reviewed_at existed."""
     allowed = {
@@ -196,7 +198,7 @@ def backfill_review_metadata(
             WHERE e.quote_id=q.id AND e.event_type IN ({marks})
             UNION ALL
             SELECT c.created_at AS reviewed_at FROM {comment_table} c WHERE c.quote_id=q.id
-        )),
+        ) AS review_rows),
         CASE WHEN q.status<>'pending' OR q.is_safe=1 OR trim(COALESCE(q.follow_up_type,''))<>''
                   OR trim(COALESCE(q.comment,''))<>''
              THEN COALESCE(NULLIF(q.updated_at,''),q.status_changed_at) END
@@ -322,6 +324,11 @@ def initialize() -> None:
                 created_at TEXT NOT NULL,
                 confirmed_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS import_payloads (
+                token TEXT PRIMARY KEY REFERENCES imports(token) ON DELETE CASCADE,
+                content_base64 TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
 
             CREATE TABLE IF NOT EXISTS daily_notes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -435,7 +442,7 @@ def set_setting(key: str, value: str) -> None:
         db.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
 
 
-def distributor_code_for(db: sqlite3.Connection, company_name: str) -> str:
+def distributor_code_for(db, company_name: str) -> str:
     normalized = distributors.normalize_name(company_name)
     if not normalized:
         return ""
@@ -732,7 +739,7 @@ def _quote_where(filters: dict[str, str], alias: str = "q") -> tuple[list[str], 
 
 def list_quotes(filters: dict[str, str]) -> list[dict[str, Any]]:
     clauses, values = _quote_where(filters)
-    n = "CAST(q.folio_number AS INTEGER)"
+    n = "CAST(NULLIF(q.folio_number,'') AS INTEGER)"
     orders = {
         "priority": "CASE q.priority WHEN 'S' THEN 1 WHEN 'A' THEN 2 WHEN 'B' THEN 3 ELSE 4 END,q.total_usd DESC",
         "date_desc": f"q.quote_date DESC,{n} DESC", "date_asc": f"q.quote_date ASC,{n} ASC",
@@ -760,8 +767,8 @@ def list_managed_quotes(filters: dict[str, str] | None = None) -> list[dict[str,
         
     orders = {
         "priority": "CASE q.priority WHEN 'S' THEN 1 WHEN 'A' THEN 2 WHEN 'B' THEN 3 ELSE 4 END,q.total_usd DESC",
-        "date_desc": "q.quote_date DESC,CAST(q.folio_number AS INTEGER) DESC",
-        "date_asc": "q.quote_date ASC,CAST(q.folio_number AS INTEGER) ASC",
+        "date_desc": "q.quote_date DESC,CAST(NULLIF(q.folio_number,'') AS INTEGER) DESC",
+        "date_asc": "q.quote_date ASC,CAST(NULLIF(q.folio_number,'') AS INTEGER) ASC",
         "status_activity": "CASE q.status WHEN 'pending' THEN 1 WHEN 'lost' THEN 2 WHEN 'po' THEN 3 ELSE 4 END,datetime(COALESCE(q.last_reviewed_at,q.discovered_at)) DESC",
         "newest_activity": "datetime(COALESCE(q.last_reviewed_at,q.discovered_at)) DESC",
         "oldest_activity": "datetime(COALESCE(q.last_reviewed_at,q.discovered_at)) ASC",
@@ -793,10 +800,10 @@ def list_management_quotes(filters: dict[str, str] | None = None) -> list[dict[s
         
     orders = {
         "priority": "CASE q.priority WHEN 'S' THEN 1 WHEN 'A' THEN 2 WHEN 'B' THEN 3 ELSE 4 END,q.total_usd DESC",
-        "date_desc": "q.quote_date DESC,CAST(q.folio_number AS INTEGER) DESC",
-        "date_asc": "q.quote_date ASC,CAST(q.folio_number AS INTEGER) ASC",
-        "folio_desc": "CAST(q.folio_number AS INTEGER) DESC,q.quote_date DESC",
-        "folio_asc": "CAST(q.folio_number AS INTEGER) ASC,q.quote_date ASC",
+        "date_desc": "q.quote_date DESC,CAST(NULLIF(q.folio_number,'') AS INTEGER) DESC",
+        "date_asc": "q.quote_date ASC,CAST(NULLIF(q.folio_number,'') AS INTEGER) ASC",
+        "folio_desc": "CAST(NULLIF(q.folio_number,'') AS INTEGER) DESC,q.quote_date DESC",
+        "folio_asc": "CAST(NULLIF(q.folio_number,'') AS INTEGER) ASC,q.quote_date ASC",
         "amount_desc": "q.total_usd DESC,q.quote_date DESC",
         "amount_asc": "q.total_usd ASC,q.quote_date ASC",
         "newest_activity": "datetime(COALESCE(q.last_reviewed_at,q.discovered_at)) DESC",
@@ -937,9 +944,11 @@ def dashboard(agent: str = "", start: str = "", end: str = "") -> dict[str, Any]
         # --- NUEVO: Gráfica de Efectividad de Contacto ---
         effective_response = effective_response_case("q", "quote_events")
         responses_raw = rows_to_dicts(db.execute(
-            f"""SELECT {effective_response} AS client_response, COUNT(*) AS count
+            f"""SELECT client_response,COUNT(*) AS count FROM (
+            SELECT {effective_response} AS client_response
             FROM quotes q WHERE q.is_archived=0 AND q.is_historical=0
-            {agent_clause}{quote_period} GROUP BY {effective_response}""", quote_params).fetchall())
+            {agent_clause}{quote_period}) AS response_rows
+            GROUP BY client_response""", quote_params).fetchall())
         responses = {"yes": 0, "no": 0, "pending": 0}
         for r in responses_raw:
             val = r.get("client_response") or "pending"
