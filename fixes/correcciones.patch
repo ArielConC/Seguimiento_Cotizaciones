@@ -1,0 +1,195 @@
+diff --git a/.dockerignore b/.dockerignore
+index 139e449..d354087 100644
+--- a/.dockerignore
++++ b/.dockerignore
+@@ -1,6 +1,9 @@
+ .git
+ .gitignore
+ .venv
++venv
++env
++manuales
+ __pycache__
+ *.py[cod]
+ *.db
+diff --git a/.gitignore b/.gitignore
+index 83bcb5f..e6c4094 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,4 +1,6 @@
+ .venv/
++venv/
++env/
+ __pycache__/
+ *.py[cod]
+ *.db
+diff --git a/auth.py b/auth.py
+index dd4dd72..7e28a97 100644
+--- a/auth.py
++++ b/auth.py
+@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
+ from typing import Any
+ 
+ import database
++import db_backend
+ 
+ 
+ SESSION_HOURS = 8
+@@ -77,13 +78,22 @@ def initialize() -> None:
+                 VALUES(?,?,?,?,?,?)""",
+                 (username, name, role, agent, now, now),
+             )
+-            
+-        # --- NUEVO: Agregar la columna is_manager sin afectar a los usuarios actuales ---
+-        try:
++
++        # Add is_manager once. Re-running the UPDATE on every start would override
++        # profile changes made later by the Secretadmin.
++        if not _has_column(db, "users", "is_manager"):
+             db.execute("ALTER TABLE users ADD COLUMN is_manager INTEGER NOT NULL DEFAULT 0")
+             db.execute("UPDATE users SET is_manager=1 WHERE username='takujiyamada'")
+-        except Exception:
+-            pass
++
++
++def _has_column(db, table: str, column: str) -> bool:
++    if db_backend.is_postgres():
++        rows = db.execute(
++            "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=?",
++            (table,),
++        ).fetchall()
++        return column in {row["column_name"] for row in rows}
++    return column in {row["name"] for row in db.execute(f"PRAGMA table_info({table})").fetchall()}
+ 
+ 
+ def _hash_password(password: str, salt_hex: str | None = None) -> tuple[str, str]:
+diff --git a/db_backend.py b/db_backend.py
+index cc85da5..2e4ae22 100644
+--- a/db_backend.py
++++ b/db_backend.py
+@@ -83,13 +83,18 @@ class HybridRow(Mapping[str, Any]):
+ 
+ 
+ def _replace_qmarks(sql: str) -> str:
++    """Convert SQLite ``?`` markers to psycopg ``%s`` markers.
++
++    psycopg treats every ``%`` as the start of a placeholder, so literal percent
++    signs (for example ``LIKE 'Merged duplicate%'``) must be doubled.
++    """
+     output: list[str] = []
+     quote = ""
+     index = 0
+     while index < len(sql):
+         char = sql[index]
+         if quote:
+-            output.append(char)
++            output.append("%%" if char == "%" else char)
+             if char == quote:
+                 if index + 1 < len(sql) and sql[index + 1] == quote:
+                     output.append(sql[index + 1])
+@@ -101,6 +106,8 @@ def _replace_qmarks(sql: str) -> str:
+             output.append(char)
+         elif char == "?":
+             output.append("%s")
++        elif char == "%":
++            output.append("%%")
+         else:
+             output.append(char)
+         index += 1
+@@ -207,6 +214,9 @@ def translate_sql(sql: str) -> str:
+         translated,
+         flags=re.IGNORECASE,
+     )
++    # SQLite LIKE ignores ASCII case; PostgreSQL LIKE does not. Keep searches
++    # (quotation, customer, End User, distributor) case-insensitive.
++    translated = re.sub(r"\bLIKE\b", "ILIKE", translated, flags=re.IGNORECASE)
+     translated = re.sub(
+         r"ALTER\s+TABLE\s+([A-Za-z_][A-Za-z0-9_]*)\s+ADD\s+COLUMN\s+(?!IF\s+NOT\s+EXISTS)",
+         r"ALTER TABLE \1 ADD COLUMN IF NOT EXISTS ",
+@@ -307,11 +317,13 @@ class PostgresConnection:
+             import psycopg
+         except ImportError as exc:
+             raise RuntimeError("PostgreSQL support requires psycopg[binary]") from exc
++        # connect_timeout leaves room for Neon to wake a suspended compute.
+         self._connection = psycopg.connect(
+             url,
+             autocommit=False,
+             prepare_threshold=None,
+             application_name="quotation-follow-up",
++            connect_timeout=30,
+         )
+ 
+     def execute(self, sql: str, parameters: Sequence[Any] | None = None) -> PostgresCursor:
+diff --git a/invoice_manager.py b/invoice_manager.py
+index 8424303..8e9cc9e 100644
+--- a/invoice_manager.py
++++ b/invoice_manager.py
+@@ -42,18 +42,6 @@ def initialize() -> None:
+             ON invoice_import_batches(user_id,status,created_at);
+             """
+         )
+-        #--- NUEVO: Sincronizar el gafete de Excel retroactivamente---
+-        batches =db.execute("SELECT payload_json FROM invoice_import_batches WHERE status='confirmed'").fetchall()
+-        for b in batches:
+-            try:
+-                records = json.loads(b["payload_json"])
+-                for r in records:
+-                    qid = int(r["quote_id"])
+-                    exist =db.excecute("SELECT 1 FROM po_invoices WHERE quote_id=?", (qid,)).fetchone()
+-                    #Solo lo inserta si no existe ya
+-                    db.execute("INSERT INTO po_invoices (quote_id) VALUES (?)",(qid,))
+-            except Exception:
+-                pass
+ 
+ 
+ def _normalize(value: Any) -> str:
+diff --git a/tests/test_db_backend.py b/tests/test_db_backend.py
+index 3ac568a..8290ef9 100644
+--- a/tests/test_db_backend.py
++++ b/tests/test_db_backend.py
+@@ -62,6 +62,14 @@ class SQLTranslationTests(unittest.TestCase):
+         self.assertEqual(row["name"], "Ariel")
+         self.assertEqual(dict(row), {"id": 7, "name": "Ariel"})
+ 
++    def test_literal_percent_signs_are_escaped_for_psycopg(self):
++        translated = db_backend.translate_sql("SELECT 1 FROM t WHERE reason NOT LIKE 'Merged duplicate%' AND id=?")
++        self.assertEqual(translated, "SELECT 1 FROM t WHERE reason NOT ILIKE 'Merged duplicate%%' AND id=%s")
++
++    def test_like_searches_stay_case_insensitive(self):
++        translated = db_backend.translate_sql("SELECT * FROM quotes WHERE end_user LIKE ?")
++        self.assertEqual(translated, "SELECT * FROM quotes WHERE end_user ILIKE %s")
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/verify_postgres.py b/verify_postgres.py
+index e6cb3ef..b2a2c84 100644
+--- a/verify_postgres.py
++++ b/verify_postgres.py
+@@ -57,10 +57,15 @@ def verify() -> dict[str, Any]:
+ 
+     standard_dashboard = database.dashboard()
+     special_dashboard = special.dashboard()
+-    standard_rows = database.list_quotes({"sort": "newest_activity"})
++    # Exercise every sort order and a case-insensitive search against PostgreSQL.
++    for order in ("priority", "date_desc", "date_asc", "folio_desc", "folio_asc", "amount_desc", "amount_asc"):
++        database.list_quotes({"order": order})
++        special.list_quotes({"order": order})
++    searched = database.list_quotes({"search": "sumitomo"})
++    standard_rows = database.list_quotes({"order": "newest_activity"})
+     managed_rows = database.list_managed_quotes({"status_group": "all"})
+     management_rows = database.list_management_quotes({"sort": "folio_desc"})
+-    special_rows = special.list_quotes({"sort": "date_desc"})
++    special_rows = special.list_quotes({"order": "date_desc"})
+     standard_months = database.monthly_report(12)
+     special_months = special.monthly_report(12)
+     standard_activity = database.report_activity("2020-01-01", "2030-12-31")
+@@ -90,6 +95,8 @@ def verify() -> dict[str, Any]:
+             "standard_dashboard_total": standard_dashboard.get("counts", {}).get("total"),
+             "special_dashboard_total": special_dashboard.get("counts", {}).get("total"),
+             "standard_list_rows": len(standard_rows),
++            "case_insensitive_search_rows": len(searched),
++            "backup_status": backup.status().get("status"),
+             "managed_list_rows": len(managed_rows),
+             "management_list_rows": len(management_rows),
+             "special_list_rows": len(special_rows),
