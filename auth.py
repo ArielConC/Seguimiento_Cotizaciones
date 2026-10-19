@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import database
+import db_backend
 
 
 SESSION_HOURS = 8
@@ -77,13 +78,22 @@ def initialize() -> None:
                 VALUES(?,?,?,?,?,?)""",
                 (username, name, role, agent, now, now),
             )
-            
-        # --- NUEVO: Agregar la columna is_manager sin afectar a los usuarios actuales ---
-        try:
+
+        # Add is_manager once. Re-running the UPDATE on every start would override
+        # profile changes made later by the Secretadmin.
+        if not _has_column(db, "users", "is_manager"):
             db.execute("ALTER TABLE users ADD COLUMN is_manager INTEGER NOT NULL DEFAULT 0")
             db.execute("UPDATE users SET is_manager=1 WHERE username='takujiyamada'")
-        except Exception:
-            pass
+
+
+def _has_column(db, table: str, column: str) -> bool:
+    if db_backend.is_postgres():
+        rows = db.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=?",
+            (table,),
+        ).fetchall()
+        return column in {row["column_name"] for row in rows}
+    return column in {row["name"] for row in db.execute(f"PRAGMA table_info({table})").fetchall()}
 
 
 def _hash_password(password: str, salt_hex: str | None = None) -> tuple[str, str]:

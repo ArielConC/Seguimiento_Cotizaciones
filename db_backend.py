@@ -83,13 +83,18 @@ class HybridRow(Mapping[str, Any]):
 
 
 def _replace_qmarks(sql: str) -> str:
+    """Convert SQLite ``?`` markers to psycopg ``%s`` markers.
+
+    psycopg treats every ``%`` as the start of a placeholder, so literal percent
+    signs (for example ``LIKE 'Merged duplicate%'``) must be doubled.
+    """
     output: list[str] = []
     quote = ""
     index = 0
     while index < len(sql):
         char = sql[index]
         if quote:
-            output.append(char)
+            output.append("%%" if char == "%" else char)
             if char == quote:
                 if index + 1 < len(sql) and sql[index + 1] == quote:
                     output.append(sql[index + 1])
@@ -101,6 +106,8 @@ def _replace_qmarks(sql: str) -> str:
             output.append(char)
         elif char == "?":
             output.append("%s")
+        elif char == "%":
+            output.append("%%")
         else:
             output.append(char)
         index += 1
@@ -207,6 +214,9 @@ def translate_sql(sql: str) -> str:
         translated,
         flags=re.IGNORECASE,
     )
+    # SQLite LIKE ignores ASCII case; PostgreSQL LIKE does not. Keep searches
+    # (quotation, customer, End User, distributor) case-insensitive.
+    translated = re.sub(r"\bLIKE\b", "ILIKE", translated, flags=re.IGNORECASE)
     translated = re.sub(
         r"ALTER\s+TABLE\s+([A-Za-z_][A-Za-z0-9_]*)\s+ADD\s+COLUMN\s+(?!IF\s+NOT\s+EXISTS)",
         r"ALTER TABLE \1 ADD COLUMN IF NOT EXISTS ",
@@ -307,11 +317,13 @@ class PostgresConnection:
             import psycopg
         except ImportError as exc:
             raise RuntimeError("PostgreSQL support requires psycopg[binary]") from exc
+        # connect_timeout leaves room for Neon to wake a suspended compute.
         self._connection = psycopg.connect(
             url,
             autocommit=False,
             prepare_threshold=None,
             application_name="quotation-follow-up",
+            connect_timeout=30,
         )
 
     def execute(self, sql: str, parameters: Sequence[Any] | None = None) -> PostgresCursor:

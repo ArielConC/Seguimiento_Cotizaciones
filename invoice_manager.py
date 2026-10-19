@@ -42,18 +42,6 @@ def initialize() -> None:
             ON invoice_import_batches(user_id,status,created_at);
             """
         )
-        #--- NUEVO: Sincronizar el gafete de Excel retroactivamente---
-        batches =db.execute("SELECT payload_json FROM invoice_import_batches WHERE status='confirmed'").fetchall()
-        for b in batches:
-            try:
-                records = json.loads(b["payload_json"])
-                for r in records:
-                    qid = int(r["quote_id"])
-                    exist =db.excecute("SELECT 1 FROM po_invoices WHERE quote_id=?", (qid,)).fetchone()
-                    #Solo lo inserta si no existe ya
-                    db.execute("INSERT INTO po_invoices (quote_id) VALUES (?)",(qid,))
-            except Exception:
-                pass
 
 
 def _normalize(value: Any) -> str:

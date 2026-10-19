@@ -1,6 +1,9 @@
 .git
 .gitignore
 .venv
+venv
+env
+manuales
 __pycache__
 *.py[cod]
 *.db

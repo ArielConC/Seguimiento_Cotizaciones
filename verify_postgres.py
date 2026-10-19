@@ -57,10 +57,15 @@ def verify() -> dict[str, Any]:
 
     standard_dashboard = database.dashboard()
     special_dashboard = special.dashboard()
-    standard_rows = database.list_quotes({"sort": "newest_activity"})
+    # Exercise every sort order and a case-insensitive search against PostgreSQL.
+    for order in ("priority", "date_desc", "date_asc", "folio_desc", "folio_asc", "amount_desc", "amount_asc"):
+        database.list_quotes({"order": order})
+        special.list_quotes({"order": order})
+    searched = database.list_quotes({"search": "sumitomo"})
+    standard_rows = database.list_quotes({"order": "newest_activity"})
     managed_rows = database.list_managed_quotes({"status_group": "all"})
     management_rows = database.list_management_quotes({"sort": "folio_desc"})
-    special_rows = special.list_quotes({"sort": "date_desc"})
+    special_rows = special.list_quotes({"order": "date_desc"})
     standard_months = database.monthly_report(12)
     special_months = special.monthly_report(12)
     standard_activity = database.report_activity("2020-01-01", "2030-12-31")
@@ -90,6 +95,8 @@ def verify() -> dict[str, Any]:
             "standard_dashboard_total": standard_dashboard.get("counts", {}).get("total"),
             "special_dashboard_total": special_dashboard.get("counts", {}).get("total"),
             "standard_list_rows": len(standard_rows),
+            "case_insensitive_search_rows": len(searched),
+            "backup_status": backup.status().get("status"),
             "managed_list_rows": len(managed_rows),
             "management_list_rows": len(management_rows),
             "special_list_rows": len(special_rows),

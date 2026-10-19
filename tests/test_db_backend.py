@@ -62,6 +62,14 @@ class SQLTranslationTests(unittest.TestCase):
         self.assertEqual(row["name"], "Ariel")
         self.assertEqual(dict(row), {"id": 7, "name": "Ariel"})
 
+    def test_literal_percent_signs_are_escaped_for_psycopg(self):
+        translated = db_backend.translate_sql("SELECT 1 FROM t WHERE reason NOT LIKE 'Merged duplicate%' AND id=?")
+        self.assertEqual(translated, "SELECT 1 FROM t WHERE reason NOT ILIKE 'Merged duplicate%%' AND id=%s")
+
+    def test_like_searches_stay_case_insensitive(self):
+        translated = db_backend.translate_sql("SELECT * FROM quotes WHERE end_user LIKE ?")
+        self.assertEqual(translated, "SELECT * FROM quotes WHERE end_user ILIKE %s")
+
 
 if __name__ == "__main__":
     unittest.main()
