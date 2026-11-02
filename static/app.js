@@ -925,7 +925,7 @@ function renderDirectorioCards(contacts) {
           </div>
         </div>
 
-        <div class="contact-quick-actions">
+        <div class="contact-quick-actions">${c.foto_tarjeta ? `<button type="button" class="btn-action-round btn-act-photo view-card-photo" data-photo="${esc(c.foto_tarjeta)}" data-title="${esc(c.nombre_completo)}" title="Ver Tarjeta Física Original">📷</button>` : ""}
           ${waNumber ? `<a href="https://wa.me/${waNumber}" target="_blank" rel="noopener" class="btn-action-round btn-act-wa" title="Abrir WhatsApp">💬</a>` : ''}
           ${telClean ? `<a href="tel:${telClean}" class="btn-action-round btn-act-call" title="Llamar">📞</a>` : ''}
           ${c.correo ? `<a href="mailto:${esc(c.correo)}" class="btn-action-round btn-act-email" title="Enviar Correo">✉️</a>` : ''}
@@ -1192,6 +1192,8 @@ if (formNuevaUbi) {
 // ==========================================
 // FLUJO ESCÁNER DE TARJETAS CON IA
 // ==========================================
+// FLUJO ESCÁNER DE TARJETAS (INDIVIDUAL Y POR LOTE)
+// ==========================================
 const btnOpenScan = $('#btn-open-scan');
 const dialogScan = $('#dialog-scan-card');
 const scanDropzone = $('#scan-dropzone');
@@ -1200,17 +1202,32 @@ const scanCameraInput = $('#scan-camera-input');
 const scanPreviewWrap = $('#scan-preview-wrap');
 const scanPreviewImg = $('#scan-preview-img');
 const scanRemoveImg = $('#scan-remove-img');
+const scanBatchWrap = $('#scan-batch-wrap');
 const btnStartScan = $('#btn-start-ai-scan');
+const btnStartBatch = $('#btn-start-batch-scan');
+const btnCancelBatch = $('#batch-cancel-btn');
 const scanAlert = $('#scan-status-alert');
 
 function resetScanModal() {
   state.directorio.currentScanBase64 = null;
-  scanPreviewImg.src = '';
-  scanPreviewWrap.classList.add('hidden');
-  $('.scan-dropzone-inner').classList.remove('hidden');
-  scanAlert.classList.add('hidden');
-  btnStartScan.disabled = true;
-  btnStartScan.innerHTML = '⚡ Extraer Datos con IA';
+  state.directorio.batchFiles = [];
+  if (scanPreviewImg) scanPreviewImg.src = '';
+  if (scanPreviewWrap) scanPreviewWrap.classList.add('hidden');
+  if (scanBatchWrap) scanBatchWrap.classList.add('hidden');
+  const inner = $('.scan-dropzone-inner');
+  if (inner) inner.classList.remove('hidden');
+  if (scanAlert) scanAlert.classList.add('hidden');
+  const progBox = $('#batch-progress-box');
+  if (progBox) progBox.classList.add('hidden');
+  if (btnStartScan) {
+    btnStartScan.classList.remove('hidden');
+    btnStartScan.disabled = true;
+    btnStartScan.innerHTML = '⚡ Extraer Datos con IA';
+  }
+  if (btnStartBatch) {
+    btnStartBatch.classList.add('hidden');
+    btnStartBatch.disabled = false;
+  }
 }
 
 if (btnOpenScan && dialogScan) {
@@ -1220,56 +1237,93 @@ if (btnOpenScan && dialogScan) {
   });
 }
 
-function processScanImageFile(file) {
-  if (!file || !file.type.startsWith('image/')) {
-    toast('Por favor selecciona un archivo de imagen valido', true);
+function compressImageFile(file, maxDim = 1200, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const raw = e.target.result;
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width, height = img.height;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) { height = Math.round((height * maxDim) / width); width = maxDim; }
+          else { width = Math.round((width * maxDim) / height); height = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => resolve(raw);
+      img.src = raw;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleSelectedFiles(filesList) {
+  const files = Array.from(filesList).filter(f => f.type.startsWith('image/'));
+  if (!files.length) {
+    toast('Por favor selecciona al menos una imagen válida', true);
     return;
   }
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const rawData = e.target.result;
-    const img = new Image();
-    img.onload = () => {
-      const maxDim = 1600;
-      let width = img.width, height = img.height;
-      if (width > maxDim || height > maxDim) {
-        if (width > height) { height = Math.round((height * maxDim) / width); width = maxDim; }
-        else { width = Math.round((width * maxDim) / height); height = maxDim; }
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = width; canvas.height = height;
-      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-      const opt = canvas.toDataURL('image/jpeg', 0.85);
-      state.directorio.currentScanBase64 = opt;
-      scanPreviewImg.src = opt;
-      $('.scan-dropzone-inner').classList.add('hidden');
-      scanPreviewWrap.classList.remove('hidden');
-      btnStartScan.disabled = false;
-    };
-    img.onerror = () => {
-      state.directorio.currentScanBase64 = rawData;
-      scanPreviewImg.src = rawData;
-      $('.scan-dropzone-inner').classList.add('hidden');
-      scanPreviewWrap.classList.remove('hidden');
-      btnStartScan.disabled = false;
-    };
-    img.src = rawData;
-  };
-  reader.readAsDataURL(file);
+
+  if (files.length === 1) {
+    // MODO INDIVIDUAL
+    const file = files[0];
+    const opt = await compressImageFile(file, 1600, 0.85);
+    state.directorio.currentScanBase64 = opt;
+    scanPreviewImg.src = opt;
+    $('.scan-dropzone-inner').classList.add('hidden');
+    if (scanBatchWrap) scanBatchWrap.classList.add('hidden');
+    scanPreviewWrap.classList.remove('hidden');
+    btnStartScan.classList.remove('hidden');
+    btnStartScan.disabled = false;
+    btnStartBatch.classList.add('hidden');
+  } else {
+    // MODO LOTE
+    state.directorio.batchFiles = files;
+    $('.scan-dropzone-inner').classList.add('hidden');
+    scanPreviewWrap.classList.add('hidden');
+    scanBatchWrap.classList.remove('hidden');
+
+    $('#batch-count-badge').textContent = `${files.length} seleccionadas`;
+    $('#batch-count-title').textContent = `Lote de ${files.length} Tarjetas`;
+    btnStartScan.classList.add('hidden');
+    btnStartBatch.classList.remove('hidden');
+    btnStartBatch.disabled = false;
+    btnStartBatch.innerHTML = `🚀 Procesar Lote (${files.length} Tarjetas)`;
+
+    const thumbsGrid = $('#batch-thumbnails-grid');
+    thumbsGrid.innerHTML = '';
+    for (let i = 0; i < Math.min(files.length, 40); i++) {
+      const thumb = document.createElement('div');
+      thumb.className = 'batch-thumb-item';
+      thumb.id = `batch-thumb-${i}`;
+      const img = document.createElement('img');
+      img.src = URL.createObjectURL(files[i]);
+      thumb.appendChild(img);
+      thumbsGrid.appendChild(thumb);
+    }
+  }
 }
 
 if (scanFileInput) {
   scanFileInput.addEventListener('change', (e) => {
-    if (e.target.files?.length) processScanImageFile(e.target.files[0]);
+    if (e.target.files?.length) handleSelectedFiles(e.target.files);
   });
 }
 if (scanCameraInput) {
   scanCameraInput.addEventListener('change', (e) => {
-    if (e.target.files?.length) processScanImageFile(e.target.files[0]);
+    if (e.target.files?.length) handleSelectedFiles(e.target.files);
   });
 }
 if (scanRemoveImg) {
   scanRemoveImg.addEventListener('click', resetScanModal);
+}
+if (btnCancelBatch) {
+  btnCancelBatch.addEventListener('click', resetScanModal);
 }
 
 // Drag & Drop
@@ -1288,10 +1342,11 @@ if (scanDropzone) {
   });
   scanDropzone.addEventListener('drop', (e) => {
     const dt = e.dataTransfer;
-    if (dt?.files?.length) processScanImageFile(dt.files[0]);
+    if (dt?.files?.length) handleSelectedFiles(dt.files);
   });
 }
 
+// Procesamiento individual
 if (btnStartScan) {
   btnStartScan.addEventListener('click', async () => {
     if (!state.directorio.currentScanBase64) return;
@@ -1311,7 +1366,7 @@ if (btnStartScan) {
       const extracted = response.extracted || {};
       dialogScan.close();
 
-      // Abrir modal de contacto con los datos extraídos o para captura manual
+      // Abrir modal de contacto con los datos extraídos y foto vinculada
       $('#contact-id').value = '';
       $('#contact-dialog-title').textContent = extracted.nombre_completo ? 'Confirmar Contacto Escaneado' : 'Nuevo Contacto';
       $('#contact-nombre').value = extracted.nombre_completo || '';
@@ -1324,6 +1379,7 @@ if (btnStartScan) {
       $('#contact-ubicacion-texto').value = extracted.direccion || '';
       $('#contact-direccion').value = extracted.direccion || '';
       $('#contact-notas').value = extracted.notas || '';
+      state.directorio.currentCardPhotoToSave = state.directorio.currentScanBase64;
 
       $('#dialog-contacto').showModal();
       if (response.ok && extracted.nombre_completo) {
@@ -1336,6 +1392,7 @@ if (btnStartScan) {
       dialogScan.close();
       $('#contact-id').value = '';
       $('#contact-dialog-title').textContent = 'Nuevo Contacto';
+      state.directorio.currentCardPhotoToSave = state.directorio.currentScanBase64;
       $('#dialog-contacto').showModal();
       toast('Tarjeta lista. Completa los datos para registrar el contacto.');
     } finally {
@@ -1343,5 +1400,86 @@ if (btnStartScan) {
       btnStartScan.innerHTML = '⚡ Extraer Datos';
       scanAlert.classList.add('hidden');
     }
+  });
+}
+
+// PROCESAMIENTO MASIVO POR LOTES (CERO SATURACIÓN DE API)
+if (btnStartBatch) {
+  btnStartBatch.addEventListener('click', async () => {
+    const files = state.directorio.batchFiles || [];
+    if (!files.length) return;
+
+    btnStartBatch.disabled = true;
+    btnCancelBatch.classList.add('hidden');
+    const progBox = $('#batch-progress-box');
+    progBox.classList.remove('hidden');
+    const progFill = $('#batch-progress-bar-fill');
+    const progStatus = $('#batch-status-text');
+
+    let processedCount = 0;
+    const total = files.length;
+
+    for (let i = 0; i < total; i++) {
+      const file = files[i];
+      const thumb = $(`#batch-thumb-${i}`);
+      if (thumb) thumb.classList.add('processing');
+
+      const pct = Math.round(((i + 1) / total) * 100);
+      progFill.style.width = `${pct}%`;
+      progStatus.textContent = `Analizando tarjeta ${i + 1} de ${total}: ${file.name}...`;
+
+      try {
+        const optBase64 = await compressImageFile(file, 1200, 0.80);
+        let extracted = {};
+        try {
+          const resp = await api('/api/directorio/scan-card', {
+            method: 'POST',
+            body: JSON.stringify({ image_base64: optBase64 })
+          });
+          if (resp && resp.ok && resp.extracted) {
+            extracted = resp.extracted;
+          }
+        } catch (apiErr) {
+          console.warn('Extracción individual en lote omitida:', apiErr);
+        }
+
+        const fallbackName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ') || `Contacto Tarjeta ${i + 1}`;
+        const contactPayload = {
+          nombre_completo: extracted.nombre_completo || fallbackName,
+          puesto: extracted.puesto || '',
+          empresa_nombre: extracted.empresa || '',
+          correo: extracted.correo || '',
+          sitio_web: extracted.sitio_web || '',
+          telefono: extracted.telefono || '',
+          telefono_2: extracted.telefono_2 || '',
+          ubicacion_texto: extracted.direccion || '',
+          direccion: extracted.direccion || '',
+          notas: (extracted.notas ? extracted.notas + ' | ' : '') + 'Digitalizado en lote',
+          foto_tarjeta: optBase64
+        };
+
+        await api('/api/directorio/contactos', {
+          method: 'POST',
+          body: JSON.stringify(contactPayload)
+        });
+
+        if (thumb) {
+          thumb.classList.remove('processing');
+          thumb.classList.add('processed');
+        }
+        processedCount++;
+      } catch (err) {
+        console.error(`Error al procesar tarjeta ${i + 1}:`, err);
+      }
+
+      // Pausa controlada de 1.8 segundos entre tarjetas para respetar la cuota gratuita de Google (15 RPM)
+      if (i < total - 1) {
+        await new Promise(res => setTimeout(res, 1800));
+      }
+    }
+
+    toast(`¡Lote finalizado! Se digitalizaron y guardaron ${processedCount} tarjetas con su foto.`);
+    dialogScan.close();
+    await renderDirectorio();
   });
 }

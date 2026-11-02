@@ -74,12 +74,17 @@ def init_db() -> None:
                 sitio_web TEXT,
                 direccion TEXT,
                 notas TEXT,
+                foto_tarjeta TEXT,
                 origen TEXT DEFAULT 'manual',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
             """
         )
+        try:
+            db.execute("ALTER TABLE directorio_contactos ADD COLUMN foto_tarjeta TEXT")
+        except Exception:
+            pass
     _maybe_migrate_legacy_data()
     sync_missing_catalogs_from_contacts()
 
@@ -326,6 +331,7 @@ def save_contact(payload: dict[str, Any]) -> dict[str, Any]:
     sitio_web = str(payload.get("sitio_web", "")).strip()
     direccion = str(payload.get("direccion", "")).strip()
     notas = str(payload.get("notas", "")).strip()
+    foto_tarjeta = str(payload.get("foto_tarjeta", "")).strip()
     origen = str(payload.get("origen", "manual")).strip()
 
     now = _now_iso()
@@ -414,13 +420,16 @@ def save_contact(payload: dict[str, Any]) -> dict[str, Any]:
                 UPDATE directorio_contactos SET
                     nombre_completo = ?, puesto = ?, correo = ?, telefono = ?, telefono_2 = ?,
                     id_empresa = ?, empresa_nombre = ?, id_ubicacion = ?, ubicacion_texto = ?,
-                    sitio_web = ?, direccion = ?, notas = ?, updated_at = ?
+                    sitio_web = ?, direccion = ?, notas = ?,
+                    foto_tarjeta = CASE WHEN ? != '' THEN ? ELSE foto_tarjeta END,
+                    updated_at = ?
                 WHERE id_contacto = ?
                 """,
                 (
                     nombre, puesto, correo, telefono, telefono_2,
                     id_empresa, empresa_nombre, id_ubicacion, ubicacion_texto,
-                    sitio_web, direccion, notas, now, int(id_contacto)
+                    sitio_web, direccion, notas, foto_tarjeta, foto_tarjeta,
+                    now, int(id_contacto)
                 ),
             )
             saved_id = int(id_contacto)
@@ -430,13 +439,13 @@ def save_contact(payload: dict[str, Any]) -> dict[str, Any]:
                 INSERT INTO directorio_contactos (
                     nombre_completo, puesto, correo, telefono, telefono_2,
                     id_empresa, empresa_nombre, id_ubicacion, ubicacion_texto,
-                    sitio_web, direccion, notas, origen, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    sitio_web, direccion, notas, foto_tarjeta, origen, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     nombre, puesto, correo, telefono, telefono_2,
                     id_empresa, empresa_nombre, id_ubicacion, ubicacion_texto,
-                    sitio_web, direccion, notas, origen, now, now
+                    sitio_web, direccion, notas, foto_tarjeta, origen, now, now
                 ),
             )
             saved_id = cur.lastrowid

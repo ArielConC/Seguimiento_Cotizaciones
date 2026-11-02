@@ -213,7 +213,7 @@
     </div>
   </form>
 </dialog>
-  <script src="/static/app.js?v=20261102.1" defer></script>
+  <script src="/static/app.js?v=20261102.2" defer></script>
   <!-- DIALOG: ESCANEO DE TARJETAS CON IA -->
   <dialog id="dialog-scan-card" class="wide-dialog">
     <div class="dialog-content">
@@ -368,5 +368,17 @@
     </div>
   </dialog>
 
+  <!-- DIALOG: VISOR DE FOTO DE TARJETA -->
+  <dialog id="dialog-card-photo" class="photo-viewer-dialog">
+    <div class="dialog-content photo-viewer-content">
+      <div class="dialog-heading">
+        <h3 id="card-photo-viewer-title">Tarjeta de Presentación</h3>
+        <button type="button" class="icon-button dialog-close">✕</button>
+      </div>
+      <div class="photo-viewer-body" style="text-align:center; padding:15px;">
+        <img id="card-photo-viewer-img" src="" alt="Tarjeta física" style="max-width:100%; max-height:75vh; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.2);">
+      </div>
+    </div>
+  </dialog>
 </body>
 </html>
