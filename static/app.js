@@ -1128,6 +1128,7 @@ if (formContacto) {
       toast('Contacto guardado exitosamente');
       await renderDirectorio();
     } catch (err) {
+      console.error('Detalle error escaneo:', err);
       toast(err.message, true);
     }
   });
@@ -1158,6 +1159,7 @@ if (formNuevaEmp) {
       toast('Empresa agregada');
       await renderDirectorio();
     } catch (err) {
+      console.error('Detalle error escaneo:', err);
       toast(err.message, true);
     }
   });
@@ -1181,6 +1183,7 @@ if (formNuevaUbi) {
       toast('Ubicación agregada');
       await renderDirectorio();
     } catch (err) {
+      console.error('Detalle error escaneo:', err);
       toast(err.message, true);
     }
   });
@@ -1325,6 +1328,7 @@ if (btnStartScan) {
       $('#dialog-contacto').showModal();
       toast('¡Tarjeta digitalizada con IA! Revisa los campos y confirma.');
     } catch (err) {
+      console.error('Detalle error escaneo:', err);
       toast(err.message, true);
     } finally {
       btnStartScan.disabled = false;

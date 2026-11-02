@@ -385,6 +385,19 @@ def generate_vcard(id_contacto: int) -> tuple[str, str]:
     return "\r\n".join(vcard_lines), f"{filename}.vcf"
 
 
+def _clean_and_parse_json(text: str) -> dict[str, Any]:
+    text = (text or "").strip()
+    match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
+    if match:
+        text = match.group(1).strip()
+    else:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            text = text[start : end + 1]
+    return json.loads(text)
+
+
 def scan_card_ai(image_base64: str, mime_type: str = "image/jpeg") -> dict[str, Any]:
     api_key = _load_env_gemini_key()
     if not api_key:
@@ -466,8 +479,15 @@ def scan_card_ai(image_base64: str, mime_type: str = "image/jpeg") -> dict[str, 
         try:
             with urllib.request.urlopen(req, timeout=75) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-                content_text = data["candidates"][0]["content"]["parts"][0]["text"]
-                parsed_json = json.loads(content_text)
+                candidates = data.get("candidates") or []
+                if not candidates:
+                    raise RuntimeError("Gemini no devolvió respuesta para la tarjeta")
+                parts = candidates[0].get("content", {}).get("parts") or []
+                if not parts or "text" not in parts[0]:
+                    finish_reason = candidates[0].get("finishReason", "DESCONOCIDO")
+                    raise RuntimeError(f"Gemini no devolvió texto. Motivo: {finish_reason}")
+                content_text = parts[0]["text"]
+                parsed_json = _clean_and_parse_json(content_text)
                 return {"ok": True, "extracted": parsed_json, "model_used": model_name}
         except urllib.error.HTTPError as exc:
             err_msg = exc.read().decode("utf-8", errors="replace")
@@ -477,6 +497,7 @@ def scan_card_ai(image_base64: str, mime_type: str = "image/jpeg") -> dict[str, 
             except Exception:
                 msg = err_msg
             last_error_msg = msg
+            print(f"[Directorio AI] Error HTTP {exc.code} ({model_name}): {msg}", flush=True)
 
             # Si es saturación (503 / high demand / overloaded), cuota (429) o modelo no disponible, intentar con el siguiente modelo
             is_retriable = exc.code in (503, 429, 404) or any(
@@ -488,6 +509,7 @@ def scan_card_ai(image_base64: str, mime_type: str = "image/jpeg") -> dict[str, 
             raise RuntimeError(f"Error en la API de Gemini ({model_name}): {msg}") from exc
         except Exception as exc:
             last_error_msg = str(exc)
+            print(f"[Directorio AI] Excepción ({model_name}): {exc}", flush=True)
             if idx < len(models_to_try) - 1:
                 time.sleep(0.5)
                 continue
