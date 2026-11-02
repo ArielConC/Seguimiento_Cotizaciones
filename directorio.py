@@ -422,7 +422,8 @@ def scan_card_ai(image_base64: str, mime_type: str = "image/jpeg") -> dict[str, 
         "Si algún campo no aparece en la tarjeta, déjalo como cadena vacía ''. No inventes datos."
     )
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    model_name = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash").strip()
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
     req_body = {
         "contents": [
             {
