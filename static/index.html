@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Quotation Follow-up | NT Tool</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261102.1">
+  <link rel="stylesheet" href="/static/styles.css?v=20261102.6">
 </head>
 <body>
   <div id="app" class="app-shell hidden">
@@ -213,7 +213,7 @@
     </div>
   </form>
 </dialog>
-  <script src="/static/app.js?v=20261102.3" defer></script>
+  <script src="/static/app.js?v=20261102.6" defer></script>
   <!-- DIALOG: ESCANEO DE TARJETAS CON IA -->
   <dialog id="dialog-scan-card" class="wide-dialog">
     <div class="dialog-content">
@@ -243,14 +243,37 @@
             </div>
           </div>
           <div id="scan-preview-wrap" class="scan-preview-wrap hidden">
-            <img id="scan-preview-img" alt="Tarjeta escaneada">
-            <button id="scan-remove-img" type="button" class="button ghost danger-btn">Cambiar Imagen</button>
+            <div class="card-sides-preview-grid">
+              <div class="card-side-box" id="scan-front-box">
+                <span class="side-badge">🖼️ Frente</span>
+                <img id="scan-preview-img" alt="Tarjeta Frente">
+                <button id="scan-remove-img" type="button" class="button ghost danger-btn" style="font-size:12px; margin-top:6px;">Cambiar Frente</button>
+              </div>
+              <div class="card-side-box" id="scan-back-box">
+                <span class="side-badge">🔄 Reverso (Opcional)</span>
+                <img id="scan-back-preview-img" alt="Tarjeta Reverso" class="hidden">
+                <div id="scan-back-placeholder" class="back-placeholder">
+                  <p style="font-size:12px; color:var(--muted); margin-bottom:8px;">¿La tarjeta tiene información atrás?</p>
+                  <label class="button secondary" style="font-size:12px; padding:6px 12px; cursor:pointer;">
+                    ➕ Agregar Reverso
+                    <input id="scan-back-file-input" type="file" accept="image/*" class="hidden">
+                  </label>
+                </div>
+                <button id="scan-remove-back-img" type="button" class="button ghost danger-btn hidden" style="font-size:12px; margin-top:6px;">Quitar Reverso</button>
+              </div>
+            </div>
           </div>
           <div id="scan-batch-wrap" class="scan-batch-wrap hidden">
             <div class="batch-header">
               <span class="badge-empresa" id="batch-count-badge">0 seleccionadas</span>
               <h4 id="batch-count-title" style="margin: 6px 0 2px;">Lote de Tarjetas</h4>
               <p style="margin:0; font-size:12px; color:var(--muted);">Las tarjetas se procesarán en cola inteligente y se guardarán automáticamente con su foto original.</p>
+            </div>
+            <div class="batch-pairing-control" style="background:#f8fafc; border:1px solid var(--line); border-radius:8px; padding:10px 14px; margin: 10px 0; text-align:left;">
+              <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px;">
+                <input type="checkbox" id="batch-pair-checkbox" style="width:18px; height:18px; cursor:pointer;">
+                <span><strong>Las fotos vienen en pares (Frente + Reverso alternados)</strong><br><small style="color:var(--muted)">Cada 2 fotografías se consolidarán en una sola tarjeta de 2 caras.</small></span>
+              </label>
             </div>
             <div id="batch-progress-box" class="batch-progress-box hidden">
               <div class="batch-progress-bar-bg">
@@ -403,7 +426,11 @@
         <h3 id="card-photo-viewer-title">Tarjeta de Presentación</h3>
         <button type="button" class="icon-button dialog-close">✕</button>
       </div>
-      <div class="photo-viewer-body" style="text-align:center; padding:15px;">
+      <div class="photo-viewer-toolbar hidden" id="card-photo-toolbar" style="display:flex; justify-content:center; gap:8px; margin: 8px 0 10px;">
+        <button type="button" id="btn-photo-show-front" class="button secondary active" style="font-size:12px; padding:6px 14px;">🖼️ Frente</button>
+        <button type="button" id="btn-photo-show-back" class="button secondary" style="font-size:12px; padding:6px 14px;">🔄 Reverso</button>
+      </div>
+      <div class="photo-viewer-body" style="text-align:center; padding:10px 15px 15px;">
         <img id="card-photo-viewer-img" src="" alt="Tarjeta física" style="max-width:100%; max-height:75vh; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.2);">
       </div>
     </div>

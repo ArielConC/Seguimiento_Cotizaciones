@@ -928,7 +928,7 @@ function renderDirectorioCards(contacts) {
           </div>
         </div>
 
-        <div class="contact-quick-actions">${c.foto_tarjeta ? `<button type="button" class="btn-action-round btn-act-photo view-card-photo" data-photo="${esc(c.foto_tarjeta)}" data-title="${esc(c.nombre_completo)}" title="Ver Tarjeta Física Original">📷</button>` : ""}
+        <div class="contact-quick-actions">${(c.foto_tarjeta || c.foto_tarjeta_reverso) ? `<button type="button" class="btn-action-round btn-act-photo view-card-photo" data-photo="${esc(c.foto_tarjeta || '')}" data-back="${esc(c.foto_tarjeta_reverso || '')}" data-title="${esc(c.nombre_completo)}" title="Ver Tarjeta Física Original">📷</button>` : ""}
           ${waNumber ? `<a href="https://wa.me/${waNumber}" target="_blank" rel="noopener" class="btn-action-round btn-act-wa" title="Abrir WhatsApp">💬</a>` : ''}
           ${telClean ? `<a href="tel:${telClean}" class="btn-action-round btn-act-call" title="Llamar">📞</a>` : ''}
           ${c.correo ? `<a href="mailto:${esc(c.correo)}" class="btn-action-round btn-act-email" title="Enviar Correo">✉️</a>` : ''}
@@ -985,7 +985,7 @@ function renderDirectorioTable(contacts) {
               <td>${c.correo ? `<a href="mailto:${esc(c.correo)}">${esc(c.correo)}</a>` : '-'}</td>
               <td>${esc(c.ubicacion_display || '-')}</td>
               <td style="text-align:right; white-space:nowrap;">
-                ${waNumber ? `<a href="https://wa.me/${waNumber}" target="_blank" rel="noopener" class="button ghost" style="padding:4px 8px; font-size:12px; margin-right:4px;">💬 WA</a>` : ''}
+                ${(c.foto_tarjeta || c.foto_tarjeta_reverso) ? `<button type="button" class="button ghost view-card-photo" data-photo="${esc(c.foto_tarjeta || '')}" data-back="${esc(c.foto_tarjeta_reverso || '')}" data-title="${esc(c.nombre_completo)}" style="padding:4px 8px; font-size:12px; margin-right:4px;" title="Ver Tarjeta">📷</button>` : ''}${waNumber ? `<a href="https://wa.me/${waNumber}" target="_blank" rel="noopener" class="button ghost" style="padding:4px 8px; font-size:12px; margin-right:4px;">💬 WA</a>` : ''}
                 <a href="/api/directorio/vcard/${c.id_contacto}" class="button ghost" style="padding:4px 8px; font-size:12px; margin-right:4px;" title="vCard">📇</a>
                 <button type="button" class="button ghost btn-edit-contact" data-id="${c.id_contacto}" style="padding:4px 8px; font-size:12px;">✏️</button>
                 ${isAdmin ? `<button type="button" class="button ghost danger-btn btn-del-contact" data-id="${c.id_contacto}" style="padding:4px 8px; font-size:12px; margin-left:4px;">🗑️</button>` : ''}
@@ -1000,13 +1000,52 @@ function renderDirectorioTable(contacts) {
   wireDirectorioEvents();
 }
 
+function openCardPhotoViewer(title, front, back) {
+  const dialog = $('#dialog-card-photo');
+  const img = $('#card-photo-viewer-img');
+  const toolbar = $('#card-photo-toolbar');
+  const btnFront = $('#btn-photo-show-front');
+  const btnBack = $('#btn-photo-show-back');
+  const titleEl = $('#card-photo-viewer-title');
+
+  if (titleEl) titleEl.textContent = title ? `Tarjeta: ${title}` : 'Tarjeta de Presentación';
+
+  let currentSide = front ? 'front' : 'back';
+  if (img) img.src = front || back || '';
+
+  if (front && back) {
+    if (toolbar) toolbar.classList.remove('hidden');
+    const updateButtons = () => {
+      btnFront?.classList.toggle('active', currentSide === 'front');
+      btnBack?.classList.toggle('active', currentSide === 'back');
+      if (img) img.src = currentSide === 'front' ? front : back;
+    };
+    if (btnFront) btnFront.onclick = () => { currentSide = 'front'; updateButtons(); };
+    if (btnBack) btnBack.onclick = () => { currentSide = 'back'; updateButtons(); };
+    updateButtons();
+  } else {
+    if (toolbar) toolbar.classList.add('hidden');
+  }
+
+  if (dialog) dialog.showModal();
+}
+
 function wireDirectorioEvents() {
-  $$('.btn-edit-contact').forEach(b => {
+  $('.btn-edit-contact').forEach(b => {
     b.onclick = () => openEditContact(Number(b.dataset.id));
   });
 
-  $$('.btn-del-contact').forEach(b => {
+  $('.btn-del-contact').forEach(b => {
     b.onclick = () => confirmDeleteContact(Number(b.dataset.id));
+  });
+
+  $('.view-card-photo').forEach(b => {
+    b.onclick = () => {
+      const front = b.dataset.photo;
+      const back = b.dataset.back;
+      const title = b.dataset.title;
+      openCardPhotoViewer(title, front, back);
+    };
   });
 }
 
@@ -1016,6 +1055,8 @@ function openEditContact(id) {
 
   $('#contact-id').value = c.id_contacto;
   $('#contact-dialog-title').textContent = 'Editar Contacto';
+  state.directorio.currentCardPhotoToSave = c.foto_tarjeta || '';
+  state.directorio.currentBackCardPhotoToSave = c.foto_tarjeta_reverso || '';
   $('#contact-nombre').value = c.nombre_completo || '';
   $('#contact-puesto').value = c.puesto || '';
   $('#contact-empresa-nombre').value = c.empresa_display || c.empresa_nombre || '';
@@ -1099,6 +1140,8 @@ if (btnNewContact) {
   btnNewContact.addEventListener('click', () => {
     $('#contact-id').value = '';
     $('#contact-dialog-title').textContent = 'Nuevo Contacto';
+    state.directorio.currentCardPhotoToSave = '';
+    state.directorio.currentBackCardPhotoToSave = '';
     $('#form-contacto').reset();
     setContactUbiType('Nacional');
     $('#dialog-contacto').showModal();
@@ -1141,7 +1184,9 @@ if (formContacto) {
       ubicacion_texto: $('#contact-ubicacion-texto').value,
         ubicacion_tipo: $('#contact-ubicacion-tipo')?.value || 'Nacional',
       direccion: $('#contact-direccion').value,
-      notas: $('#contact-notas').value
+      notas: $('#contact-notas').value,
+      foto_tarjeta: state.directorio.currentCardPhotoToSave || '',
+      foto_tarjeta_reverso: state.directorio.currentBackCardPhotoToSave || ''
     };
 
     try {
@@ -1149,6 +1194,8 @@ if (formContacto) {
         method: 'POST',
         body: JSON.stringify(payload)
       });
+      state.directorio.currentCardPhotoToSave = '';
+      state.directorio.currentBackCardPhotoToSave = '';
       $('#dialog-contacto').close();
       toast('Contacto guardado exitosamente');
       await renderDirectorio();
@@ -1227,6 +1274,11 @@ const scanCameraInput = $('#scan-camera-input');
 const scanPreviewWrap = $('#scan-preview-wrap');
 const scanPreviewImg = $('#scan-preview-img');
 const scanRemoveImg = $('#scan-remove-img');
+const scanBackFileInput = $('#scan-back-file-input');
+const scanBackPreviewImg = $('#scan-back-preview-img');
+const scanBackPlaceholder = $('#scan-back-placeholder');
+const scanRemoveBackImg = $('#scan-remove-back-img');
+
 const scanBatchWrap = $('#scan-batch-wrap');
 const btnStartScan = $('#btn-start-ai-scan');
 const btnStartBatch = $('#btn-start-batch-scan');
@@ -1235,15 +1287,28 @@ const scanAlert = $('#scan-status-alert');
 
 function resetScanModal() {
   state.directorio.currentScanBase64 = null;
+  state.directorio.currentBackScanBase64 = '';
   state.directorio.batchFiles = [];
+
   if (scanPreviewImg) scanPreviewImg.src = '';
+  if (scanBackPreviewImg) {
+    scanBackPreviewImg.src = '';
+    scanBackPreviewImg.classList.add('hidden');
+  }
+  if (scanBackPlaceholder) scanBackPlaceholder.classList.remove('hidden');
+  if (scanRemoveBackImg) scanRemoveBackImg.classList.add('hidden');
+  if (scanBackFileInput) scanBackFileInput.value = '';
+
   if (scanPreviewWrap) scanPreviewWrap.classList.add('hidden');
   if (scanBatchWrap) scanBatchWrap.classList.add('hidden');
+
   const inner = $('.scan-dropzone-inner');
   if (inner) inner.classList.remove('hidden');
   if (scanAlert) scanAlert.classList.add('hidden');
+
   const progBox = $('#batch-progress-box');
   if (progBox) progBox.classList.add('hidden');
+
   if (btnStartScan) {
     btnStartScan.classList.remove('hidden');
     btnStartScan.disabled = true;
@@ -1287,6 +1352,36 @@ function compressImageFile(file, maxDim = 1200, quality = 0.82) {
   });
 }
 
+// Carga de reverso en modo individual
+if (scanBackFileInput) {
+  scanBackFileInput.addEventListener('change', async (e) => {
+    if (e.target.files?.length) {
+      const file = e.target.files[0];
+      const opt = await compressImageFile(file, 1600, 0.85);
+      state.directorio.currentBackScanBase64 = opt;
+      if (scanBackPreviewImg) {
+        scanBackPreviewImg.src = opt;
+        scanBackPreviewImg.classList.remove('hidden');
+      }
+      if (scanBackPlaceholder) scanBackPlaceholder.classList.add('hidden');
+      if (scanRemoveBackImg) scanRemoveBackImg.classList.remove('hidden');
+    }
+  });
+}
+
+if (scanRemoveBackImg) {
+  scanRemoveBackImg.addEventListener('click', () => {
+    state.directorio.currentBackScanBase64 = '';
+    if (scanBackPreviewImg) {
+      scanBackPreviewImg.src = '';
+      scanBackPreviewImg.classList.add('hidden');
+    }
+    if (scanBackPlaceholder) scanBackPlaceholder.classList.remove('hidden');
+    if (scanRemoveBackImg) scanRemoveBackImg.classList.add('hidden');
+    if (scanBackFileInput) scanBackFileInput.value = '';
+  });
+}
+
 async function handleSelectedFiles(filesList) {
   const files = Array.from(filesList).filter(f => f.type.startsWith('image/'));
   if (!files.length) {
@@ -1299,37 +1394,52 @@ async function handleSelectedFiles(filesList) {
     const file = files[0];
     const opt = await compressImageFile(file, 1600, 0.85);
     state.directorio.currentScanBase64 = opt;
-    scanPreviewImg.src = opt;
-    $('.scan-dropzone-inner').classList.add('hidden');
+    state.directorio.currentBackScanBase64 = '';
+    if (scanPreviewImg) scanPreviewImg.src = opt;
+
+    if (scanBackPreviewImg) {
+      scanBackPreviewImg.src = '';
+      scanBackPreviewImg.classList.add('hidden');
+    }
+    if (scanBackPlaceholder) scanBackPlaceholder.classList.remove('hidden');
+    if (scanRemoveBackImg) scanRemoveBackImg.classList.add('hidden');
+
+    $('.scan-dropzone-inner')?.classList.add('hidden');
     if (scanBatchWrap) scanBatchWrap.classList.add('hidden');
-    scanPreviewWrap.classList.remove('hidden');
-    btnStartScan.classList.remove('hidden');
-    btnStartScan.disabled = false;
-    btnStartBatch.classList.add('hidden');
+    scanPreviewWrap?.classList.remove('hidden');
+    if (btnStartScan) {
+      btnStartScan.classList.remove('hidden');
+      btnStartScan.disabled = false;
+    }
+    if (btnStartBatch) btnStartBatch.classList.add('hidden');
   } else {
     // MODO LOTE
     state.directorio.batchFiles = files;
-    $('.scan-dropzone-inner').classList.add('hidden');
-    scanPreviewWrap.classList.add('hidden');
-    scanBatchWrap.classList.remove('hidden');
+    $('.scan-dropzone-inner')?.classList.add('hidden');
+    scanPreviewWrap?.classList.add('hidden');
+    scanBatchWrap?.classList.remove('hidden');
 
     $('#batch-count-badge').textContent = `${files.length} seleccionadas`;
-    $('#batch-count-title').textContent = `Lote de ${files.length} Tarjetas`;
-    btnStartScan.classList.add('hidden');
-    btnStartBatch.classList.remove('hidden');
-    btnStartBatch.disabled = false;
-    btnStartBatch.innerHTML = `🚀 Procesar Lote (${files.length} Tarjetas)`;
+    $('#batch-count-title').textContent = `Lote de ${files.length} Fotografías`;
+    btnStartScan?.classList.add('hidden');
+    if (btnStartBatch) {
+      btnStartBatch.classList.remove('hidden');
+      btnStartBatch.disabled = false;
+      btnStartBatch.innerHTML = `🚀 Procesar Lote (${files.length} Fotografías)`;
+    }
 
     const thumbsGrid = $('#batch-thumbnails-grid');
-    thumbsGrid.innerHTML = '';
-    for (let i = 0; i < Math.min(files.length, 40); i++) {
-      const thumb = document.createElement('div');
-      thumb.className = 'batch-thumb-item';
-      thumb.id = `batch-thumb-${i}`;
-      const img = document.createElement('img');
-      img.src = URL.createObjectURL(files[i]);
-      thumb.appendChild(img);
-      thumbsGrid.appendChild(thumb);
+    if (thumbsGrid) {
+      thumbsGrid.innerHTML = '';
+      for (let i = 0; i < Math.min(files.length, 60); i++) {
+        const thumb = document.createElement('div');
+        thumb.className = 'batch-thumb-item';
+        thumb.id = `batch-thumb-${i}`;
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(files[i]);
+        thumb.appendChild(img);
+        thumbsGrid.appendChild(thumb);
+      }
     }
   }
 }
@@ -1371,27 +1481,28 @@ if (scanDropzone) {
   });
 }
 
-// Procesamiento individual
+// PROCESAMIENTO INDIVIDUAL (Frente + Reverso opcional)
 if (btnStartScan) {
   btnStartScan.addEventListener('click', async () => {
     if (!state.directorio.currentScanBase64) return;
 
     btnStartScan.disabled = true;
     btnStartScan.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></div> Procesando tarjeta...';
-    scanAlert.classList.remove('hidden');
+    scanAlert?.classList.remove('hidden');
 
     try {
       const response = await api('/api/directorio/scan-card', {
         method: 'POST',
         body: JSON.stringify({
-          image_base64: state.directorio.currentScanBase64
+          image_base64: state.directorio.currentScanBase64,
+          back_image_base64: state.directorio.currentBackScanBase64 || ''
         })
       });
 
       const extracted = response.extracted || {};
       dialogScan.close();
 
-      // Abrir modal de contacto con los datos extraídos y foto vinculada
+      // Abrir modal de contacto con los datos extraídos y fotos vinculadas
       $('#contact-id').value = '';
       $('#contact-dialog-title').textContent = extracted.nombre_completo ? 'Confirmar Contacto Escaneado' : 'Nuevo Contacto';
       $('#contact-nombre').value = extracted.nombre_completo || '';
@@ -1402,9 +1513,11 @@ if (btnStartScan) {
       $('#contact-tel1').value = extracted.telefono || '';
       $('#contact-tel2').value = extracted.telefono_2 || '';
       $('#contact-ubicacion-texto').value = extracted.direccion || '';
+      setContactUbiType('Nacional');
       $('#contact-direccion').value = extracted.direccion || '';
       $('#contact-notas').value = extracted.notas || '';
       state.directorio.currentCardPhotoToSave = state.directorio.currentScanBase64;
+      state.directorio.currentBackCardPhotoToSave = state.directorio.currentBackScanBase64 || '';
 
       $('#dialog-contacto').showModal();
       if (response.ok && extracted.nombre_completo) {
@@ -1417,58 +1530,80 @@ if (btnStartScan) {
       dialogScan.close();
       $('#contact-id').value = '';
       $('#contact-dialog-title').textContent = 'Nuevo Contacto';
+      setContactUbiType('Nacional');
       state.directorio.currentCardPhotoToSave = state.directorio.currentScanBase64;
+      state.directorio.currentBackCardPhotoToSave = state.directorio.currentBackScanBase64 || '';
       $('#dialog-contacto').showModal();
       toast('Tarjeta lista. Completa los datos para registrar el contacto.');
     } finally {
       btnStartScan.disabled = false;
-      btnStartScan.innerHTML = '⚡ Extraer Datos';
-      scanAlert.classList.add('hidden');
+      btnStartScan.innerHTML = '⚡ Extraer Datos con IA';
+      scanAlert?.classList.add('hidden');
     }
   });
 }
 
-// PROCESAMIENTO MASIVO POR LOTES (CERO SATURACIÓN DE API)
+// PROCESAMIENTO MASIVO POR LOTES (Individual o Pares Frente+Reverso)
 if (btnStartBatch) {
   btnStartBatch.addEventListener('click', async () => {
     const files = state.directorio.batchFiles || [];
     if (!files.length) return;
 
+    const isPaired = $('#batch-pair-checkbox')?.checked || false;
     btnStartBatch.disabled = true;
-    btnCancelBatch.classList.add('hidden');
+    btnCancelBatch?.classList.add('hidden');
     const progBox = $('#batch-progress-box');
-    progBox.classList.remove('hidden');
+    progBox?.classList.remove('hidden');
     const progFill = $('#batch-progress-bar-fill');
     const progStatus = $('#batch-status-text');
 
     let processedCount = 0;
-    const total = files.length;
+    const totalFiles = files.length;
+    const step = isPaired ? 2 : 1;
+    const totalCards = isPaired ? Math.ceil(totalFiles / 2) : totalFiles;
 
-    for (let i = 0; i < total; i++) {
-      const file = files[i];
-      const thumb = $(`#batch-thumb-${i}`);
-      if (thumb) thumb.classList.add('processing');
+    for (let i = 0; i < totalFiles; i += step) {
+      const cardIndex = isPaired ? Math.floor(i / 2) + 1 : i + 1;
+      const frontFile = files[i];
+      const backFile = isPaired && (i + 1 < totalFiles) ? files[i + 1] : null;
 
-      const pct = Math.round(((i + 1) / total) * 100);
-      progFill.style.width = `${pct}%`;
-      progStatus.textContent = `Analizando tarjeta ${i + 1} de ${total}: ${file.name}...`;
+      const thumbFront = $(`#batch-thumb-${i}`);
+      const thumbBack = backFile ? $(`#batch-thumb-${i + 1}`) : null;
+      if (thumbFront) thumbFront.classList.add('processing');
+      if (thumbBack) thumbBack.classList.add('processing');
+
+      const pct = Math.round((cardIndex / totalCards) * 100);
+      if (progFill) progFill.style.width = `${pct}%`;
+      if (progStatus) {
+        progStatus.textContent = backFile 
+          ? `Analizando tarjeta ${cardIndex} de ${totalCards} (Frente + Reverso)...`
+          : `Analizando tarjeta ${cardIndex} de ${totalCards}: ${frontFile.name}...`;
+      }
 
       try {
-        const optBase64 = await compressImageFile(file, 1200, 0.80);
+        const frontOpt = await compressImageFile(frontFile, 1200, 0.80);
+        let backOpt = '';
+        if (backFile) {
+          backOpt = await compressImageFile(backFile, 1200, 0.80);
+        }
+
         let extracted = {};
         try {
           const resp = await api('/api/directorio/scan-card', {
             method: 'POST',
-            body: JSON.stringify({ image_base64: optBase64 })
+            body: JSON.stringify({
+              image_base64: frontOpt,
+              back_image_base64: backOpt
+            })
           });
           if (resp && resp.ok && resp.extracted) {
             extracted = resp.extracted;
           }
         } catch (apiErr) {
-          console.warn('Extracción individual en lote omitida:', apiErr);
+          console.warn(`Extracción en lote omitida para tarjeta ${cardIndex}:`, apiErr);
         }
 
-        const fallbackName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ') || `Contacto Tarjeta ${i + 1}`;
+        const fallbackName = frontFile.name.replace(/.[^/.]+$/, '').replace(/[-_]/g, ' ') || `Contacto Tarjeta ${cardIndex}`;
         const contactPayload = {
           nombre_completo: extracted.nombre_completo || fallbackName,
           puesto: extracted.puesto || '',
@@ -1478,9 +1613,11 @@ if (btnStartBatch) {
           telefono: extracted.telefono || '',
           telefono_2: extracted.telefono_2 || '',
           ubicacion_texto: extracted.direccion || '',
+          ubicacion_tipo: 'Nacional',
           direccion: extracted.direccion || '',
-          notas: (extracted.notas ? extracted.notas + ' | ' : '') + 'Digitalizado en lote',
-          foto_tarjeta: optBase64
+          notas: (extracted.notas ? extracted.notas + ' | ' : '') + (backFile ? 'Digitalizado en lote (Frente y Reverso)' : 'Digitalizado en lote'),
+          foto_tarjeta: frontOpt,
+          foto_tarjeta_reverso: backOpt
         };
 
         await api('/api/directorio/contactos', {
@@ -1488,22 +1625,26 @@ if (btnStartBatch) {
           body: JSON.stringify(contactPayload)
         });
 
-        if (thumb) {
-          thumb.classList.remove('processing');
-          thumb.classList.add('processed');
+        if (thumbFront) {
+          thumbFront.classList.remove('processing');
+          thumbFront.classList.add('processed');
+        }
+        if (thumbBack) {
+          thumbBack.classList.remove('processing');
+          thumbBack.classList.add('processed');
         }
         processedCount++;
       } catch (err) {
-        console.error(`Error al procesar tarjeta ${i + 1}:`, err);
+        console.error(`Error al procesar tarjeta ${cardIndex}:`, err);
       }
 
       // Pausa controlada de 1.8 segundos entre tarjetas para respetar la cuota gratuita de Google (15 RPM)
-      if (i < total - 1) {
+      if (i + step < totalFiles) {
         await new Promise(res => setTimeout(res, 1800));
       }
     }
 
-    toast(`¡Lote finalizado! Se digitalizaron y guardaron ${processedCount} tarjetas con su foto.`);
+    toast(`¡Lote finalizado! Se digitalizaron y guardaron ${processedCount} tarjetas con sus fotos.`);
     dialogScan.close();
     await renderDirectorio();
   });

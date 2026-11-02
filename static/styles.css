@@ -162,3 +162,16 @@ tr.tracking-orange:hover{background:#ffe7c3}tr.tracking-red:hover{background:#ff
 
 .badge-ubi.nacional { background: #eff6ff; color: #1d4ed8; font-weight: 700; }
 .badge-ubi.internacional { background: #f0fdf4; color: #15803d; font-weight: 700; }
+/* Tarjetas de Doble Cara (Frente y Reverso) */
+.card-sides-preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px; }
+.card-side-box { position: relative; background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 12px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 220px; }
+.card-side-box img { max-width: 100%; max-height: 200px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.side-badge { position: absolute; top: 6px; left: 8px; font-size: 11px; font-weight: 700; background: #f1f5f9; color: #475569; padding: 2px 6px; border-radius: 4px; }
+.back-placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 20px; text-align: center; }
+
+.batch-thumb-item .thumb-pair-badge { position: absolute; bottom: 2px; left: 2px; font-size: 9px; font-weight: 800; background: rgba(15, 23, 42, 0.85); color: #fff; padding: 1px 4px; border-radius: 3px; }
+.btn-side-toggle.active { background: #3b82f6; color: #fff; border-color: #2563eb; }
+
+@media (max-width: 640px) {
+  .card-sides-preview-grid { grid-template-columns: 1fr; }
+}

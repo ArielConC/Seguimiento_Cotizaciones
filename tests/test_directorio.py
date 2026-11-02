@@ -72,6 +72,22 @@ class TestDirectorio(unittest.TestCase):
         self.assertTrue(any(e["nombre"] == "Empresa Automatica SA" for e in cats["empresas"]))
         self.assertTrue(any("Nuevo León" in u["estado"] for u in cats["ubicaciones"]))
 
+    def test_save_contact_with_double_sided_card(self):
+        payload = {
+            "nombre_completo": "Carlos Mendoza Doble",
+            "empresa_nombre": "Empresa Doble Cara SA",
+            "ubicacion_texto": "Querétaro, Qro.",
+            "ubicacion_tipo": "Nacional",
+            "foto_tarjeta": "data:image/jpeg;base64,frente123",
+            "foto_tarjeta_reverso": "data:image/jpeg;base64,reverso456",
+        }
+        res = directorio.save_contact(payload)
+        self.assertTrue(res["ok"])
+        c = res["contact"]
+        self.assertEqual(c["foto_tarjeta"], "data:image/jpeg;base64,frente123")
+        self.assertEqual(c["foto_tarjeta_reverso"], "data:image/jpeg;base64,reverso456")
+        self.assertEqual(c["ubicacion_tipo"], "Nacional")
+
 
 if __name__ == "__main__":
     unittest.main()

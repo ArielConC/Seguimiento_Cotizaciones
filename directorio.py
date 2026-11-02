@@ -86,6 +86,10 @@ def init_db() -> None:
         except Exception:
             pass
         try:
+            db.execute("ALTER TABLE directorio_contactos ADD COLUMN foto_tarjeta_reverso TEXT")
+        except Exception:
+            pass
+        try:
             db.execute("ALTER TABLE directorio_contactos ADD COLUMN ubicacion_tipo TEXT NOT NULL DEFAULT 'Nacional'")
         except Exception:
             pass
@@ -347,6 +351,7 @@ def save_contact(payload: dict[str, Any]) -> dict[str, Any]:
     direccion = str(payload.get("direccion", "")).strip()
     notas = str(payload.get("notas", "")).strip()
     foto_tarjeta = str(payload.get("foto_tarjeta", "")).strip()
+    foto_tarjeta_reverso = str(payload.get("foto_tarjeta_reverso", "")).strip()
     ubicacion_tipo = str(payload.get("ubicacion_tipo", "")).strip()
     if ubicacion_tipo not in ("Nacional", "Internacional"):
         raw_u = (ubicacion_texto or "").lower()
@@ -447,13 +452,16 @@ def save_contact(payload: dict[str, Any]) -> dict[str, Any]:
                     id_empresa = ?, empresa_nombre = ?, id_ubicacion = ?, ubicacion_texto = ?,
                     ubicacion_tipo = ?, sitio_web = ?, direccion = ?, notas = ?,
                     foto_tarjeta = CASE WHEN ? != '' THEN ? ELSE foto_tarjeta END,
+                    foto_tarjeta_reverso = CASE WHEN ? != '' THEN ? ELSE foto_tarjeta_reverso END,
                     updated_at = ?
                 WHERE id_contacto = ?
                 """,
                 (
                     nombre, puesto, correo, telefono, telefono_2,
                     id_empresa, empresa_nombre, id_ubicacion, ubicacion_texto,
-                    ubicacion_tipo, sitio_web, direccion, notas, foto_tarjeta, foto_tarjeta,
+                    ubicacion_tipo, sitio_web, direccion, notas,
+                    foto_tarjeta, foto_tarjeta,
+                    foto_tarjeta_reverso, foto_tarjeta_reverso,
                     now, int(id_contacto)
                 ),
             )
@@ -464,13 +472,14 @@ def save_contact(payload: dict[str, Any]) -> dict[str, Any]:
                 INSERT INTO directorio_contactos (
                     nombre_completo, puesto, correo, telefono, telefono_2,
                     id_empresa, empresa_nombre, id_ubicacion, ubicacion_texto,
-                    ubicacion_tipo, sitio_web, direccion, notas, foto_tarjeta, origen, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ubicacion_tipo, sitio_web, direccion, notas, foto_tarjeta, foto_tarjeta_reverso, origen, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     nombre, puesto, correo, telefono, telefono_2,
                     id_empresa, empresa_nombre, id_ubicacion, ubicacion_texto,
-                    ubicacion_tipo, sitio_web, direccion, notas, foto_tarjeta, origen, now, now
+                    ubicacion_tipo, sitio_web, direccion, notas,
+                    foto_tarjeta, foto_tarjeta_reverso, origen, now, now
                 ),
             )
             saved_id = cur.lastrowid
@@ -497,10 +506,13 @@ def save_empresa(nombre: str, sector: str = "") -> dict[str, Any]:
     if not nombre:
         raise ValueError("El nombre de la empresa es obligatorio")
     with database.connect() as db:
-        db.execute(
-            "INSERT INTO directorio_empresas (nombre, sector, created_at) VALUES (?, ?, ?)",
-            (nombre, sector.strip(), _now_iso()),
-        )
+        try:
+            db.execute(
+                "INSERT INTO directorio_empresas (nombre, sector, created_at) VALUES (?, ?, ?)",
+                (nombre, sector.strip(), _now_iso()),
+            )
+        except Exception:
+            pass
     return {"ok": True, "catalogs": get_catalogs()}
 
 
@@ -511,10 +523,13 @@ def save_ubicacion(tipo: str, pais: str, estado: str) -> dict[str, Any]:
         raise ValueError("País y estado son obligatorios")
     tipo = "Internacional" if tipo == "Internacional" else "Nacional"
     with database.connect() as db:
-        db.execute(
-            "INSERT INTO directorio_ubicaciones (tipo, pais, estado, created_at) VALUES (?, ?, ?, ?)",
-            (tipo, pais, estado, _now_iso()),
-        )
+        try:
+            db.execute(
+                "INSERT INTO directorio_ubicaciones (tipo, pais, estado, created_at) VALUES (?, ?, ?, ?)",
+                (tipo, pais, estado, _now_iso()),
+            )
+        except Exception:
+            pass
     return {"ok": True, "catalogs": get_catalogs()}
 
 
@@ -586,16 +601,26 @@ def _get_supported_gemini_models(api_key: str) -> list[str]:
                     if name:
                         models.append(name)
             if models:
-                # Priorizar los modelos Flash livianos
-                flash_models = [m for m in models if "flash" in m]
-                other_models = [m for m in models if "flash" not in m]
-                return flash_models + other_models
+                def _priority(m):
+                    ml = m.lower()
+                    if "2.0-flash" in ml and "lite" not in ml: return 1
+                    if "2.5-flash" in ml: return 2
+                    if "1.5-flash" in ml: return 3
+                    if "flash" in ml: return 4
+                    return 10
+                models.sort(key=_priority)
+                return models
     except Exception as exc:
         print(f"[Directorio AI] No se pudo listar modelos dinámicamente: {exc}", flush=True)
     return []
 
 
-def scan_card_ai(image_base64: str, mime_type: str = "image/jpeg") -> dict[str, Any]:
+def scan_card_ai(
+    image_base64: str,
+    mime_type: str = "image/jpeg",
+    back_image_base64: str = "",
+    back_mime_type: str = "image/jpeg",
+) -> dict[str, Any]:
     api_key = _load_env_gemini_key()
     if not api_key:
         return {
@@ -604,7 +629,7 @@ def scan_card_ai(image_base64: str, mime_type: str = "image/jpeg") -> dict[str, 
             "message": "GEMINI_API_KEY no configurada. Puedes ingresar los datos manualmente.",
         }
 
-    # Limpiar prefijo data URI si viene presente
+    # Limpiar prefijo data URI si viene presente en imagen frontal
     if "," in image_base64:
         header, image_base64 = image_base64.split(",", 1)
         if "image/png" in header:
@@ -616,9 +641,21 @@ def scan_card_ai(image_base64: str, mime_type: str = "image/jpeg") -> dict[str, 
         else:
             mime_type = "image/jpeg"
 
+    # Limpiar prefijo data URI si viene presente en imagen trasera
+    if back_image_base64 and "," in back_image_base64:
+        b_header, back_image_base64 = back_image_base64.split(",", 1)
+        if "image/png" in b_header:
+            back_mime_type = "image/png"
+        elif "image/webp" in b_header:
+            back_mime_type = "image/webp"
+        elif "image/heic" in b_header:
+            back_mime_type = "image/heic"
+        else:
+            back_mime_type = "image/jpeg"
+
     prompt = (
         "Eres un asistente experto en digitalización de tarjetas de presentación de negocios y corporativas. "
-        "Analiza minuciosamente la imagen de la tarjeta de presentación provista y extrae los datos del contacto. "
+        "Analiza minuciosamente la(s) imagen(es) de la tarjeta provista (FRENTE y, si existe, REVERSO) y consolida los datos del contacto en un único registro. "
         "Devuelve ÚNICAMENTE un objeto JSON válido con los siguientes campos estrictos:\n"
         "{\n"
         '  "nombre_completo": "Nombre de la persona (no de la empresa, sin títulos como Lic. o Ing. a menos que formen parte del nombre)",\n'
@@ -643,7 +680,7 @@ def scan_card_ai(image_base64: str, mime_type: str = "image/jpeg") -> dict[str, 
         candidate_models.append(env_model)
     candidate_models.extend(available_models)
     # Modelos de respaldo estándar
-    candidate_models.extend(["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-3.8-flash"])
+    candidate_models.extend(["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-2.0-flash-lite"])
 
     # Deduplicar manteniendo orden
     models_to_try = []
@@ -651,20 +688,27 @@ def scan_card_ai(image_base64: str, mime_type: str = "image/jpeg") -> dict[str, 
         if m and m not in models_to_try:
             models_to_try.append(m)
 
-    req_body = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": prompt},
-                    {
-                        "inline_data": {
-                            "mime_type": mime_type,
-                            "data": image_base64,
-                        }
-                    },
-                ]
+    parts: list[dict[str, Any]] = [
+        {"text": prompt},
+        {
+            "inline_data": {
+                "mime_type": mime_type,
+                "data": image_base64,
             }
-        ],
+        },
+    ]
+    if back_image_base64:
+        parts.append(
+            {
+                "inline_data": {
+                    "mime_type": back_mime_type,
+                    "data": back_image_base64,
+                }
+            }
+        )
+
+    req_body = {
+        "contents": [{"parts": parts}],
         "generationConfig": {
             "response_mime_type": "application/json",
             "temperature": 0.1,
@@ -683,7 +727,7 @@ def scan_card_ai(image_base64: str, mime_type: str = "image/jpeg") -> dict[str, 
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=40) as resp:
+            with urllib.request.urlopen(req, timeout=20) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 candidates = data.get("candidates") or []
                 if not candidates:

@@ -254,7 +254,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(res, HTTPStatus.CREATED)
             elif parsed.path == "/api/directorio/scan-card":
                 payload = self._read_json(25_000_000)
-                res = directorio.scan_card_ai(str(payload.get("image_base64", "")), str(payload.get("mime_type", "image/jpeg")))
+                res = directorio.scan_card_ai(
+                    str(payload.get("image_base64", "")),
+                    str(payload.get("mime_type", "image/jpeg")),
+                    str(payload.get("back_image_base64", "")),
+                    str(payload.get("back_mime_type", "image/jpeg")),
+                )
                 auth.audit(user, "directorio_card_scanned", ip=self._client_ip())
                 self._json(res)
             elif parsed.path == "/api/directorio/empresas":
