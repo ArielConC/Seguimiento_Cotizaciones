@@ -270,6 +270,10 @@ class Handler(BaseHTTPRequestHandler):
                 payload = self._read_json()
                 res = directorio.save_ubicacion(str(payload.get("tipo", "Nacional")), str(payload.get("pais", "")), str(payload.get("estado", "")))
                 self._json(res, HTTPStatus.CREATED)
+            elif parsed.path == "/api/directorio/unificar-catalogos":
+                res = directorio.unify_catalogs()
+                auth.audit(user, "directorio_catalogos_unificados", ip=self._client_ip())
+                self._json(res)
             elif re.fullmatch(r"/api/directorio/contactos/\d+/delete", parsed.path):
                 if user.get("role") == "readonly": raise PermissionError("Permission denied for read-only user")
                 cid = int(parsed.path.split("/")[4])

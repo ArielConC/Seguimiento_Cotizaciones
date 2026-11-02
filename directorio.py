@@ -107,6 +107,188 @@ def init_db() -> None:
     sync_missing_catalogs_from_contacts()
 
 
+
+def normalize_company_key(name: str) -> str:
+    if not name:
+        return ""
+    import unicodedata, re
+    text = unicodedata.normalize('NFKD', str(name)).encode('ASCII', 'ignore').decode('utf-8').lower()
+    patterns = [
+        r'\bs\.?a\.?p\.?i\.?\s+de\s+c\.?v\.?\b',
+        r'\bs\.?a\.?p\.?i\.?\b',
+        r'\bs\.?\s*de\s*r\.?l\.?\s*de\s*c\.?v\.?\b',
+        r'\bs\.?a\.?\s*de\s*c\.?v\.?\b',
+        r'\bde\s+c\.?v\.?\b',
+        r'\bs\.?a\.?\b',
+        r'\bs\.?c\.?\b',
+        r'\binc\.?\b',
+        r'\bllc\.?\b',
+        r'\bltd\.?\b',
+        r'\bcorp(oration)?\.?\b',
+        r'\bgmbh\b',
+        r'\bco(mpany)?\.?\b',
+    ]
+    for p in patterns:
+        text = re.sub(p, ' ', text)
+    text = re.sub(r'[^a-z0-9\s]', ' ', text)
+    return re.sub(r'\s+', ' ', text).strip()
+
+
+def choose_canonical_company_name(names: list[str]) -> str:
+    if not names:
+        return ""
+    def score(name: str) -> int:
+        s = 0
+        if len(name) > 4 and name.isupper():
+            s -= 10
+        if any(suff in name.upper() for suff in ["S.A. DE C.V.", "SA DE CV", "S.A.P.I.", "S. DE R.L."]):
+            s -= 5
+        if any(c in name for c in "áéíóúÁÉÍÓÚñÑ"):
+            s += 5
+        s -= abs(len(name) - 18)
+        return s
+    return max(names, key=score)
+
+
+def find_matching_empresa(raw_name: str, existing_empresas: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not raw_name:
+        return None
+    raw_lower = raw_name.strip().lower()
+    for e in existing_empresas:
+        if e["nombre"].strip().lower() == raw_lower:
+            return e
+
+    target_key = normalize_company_key(raw_name)
+    if not target_key:
+        return None
+
+    for e in existing_empresas:
+        if normalize_company_key(e["nombre"]) == target_key:
+            return e
+
+    target_tokens = set(target_key.split())
+    for e in existing_empresas:
+        e_key = normalize_company_key(e["nombre"])
+        e_tokens = set(e_key.split())
+        common = target_tokens.intersection(e_tokens)
+        if len(common) >= 2 and (target_tokens.issubset(e_tokens) or e_tokens.issubset(target_tokens)):
+            return e
+
+    return None
+
+
+STATE_SYNONYMS: dict[str, list[str]] = {
+    "Querétaro": ["qro", "queretaro", "santiago de queretaro"],
+    "Nuevo León": ["nl", "nuevo leon", "monterrey", "san pedro garza", "apodaca", "guadalupe", "san nicolas"],
+    "Guanajuato": ["gto", "guanajuato", "leon", "irapuato", "silao", "celaya", "salamanca"],
+    "Jalisco": ["jal", "jalisco", "guadalajara", "zapopan", "tlaquepaque", "tonala"],
+    "Ciudad de México": ["cdmx", "df", "distrito federal", "ciudad de mexico"],
+    "Estado de México": ["edomex", "edo mex", "estado de mexico", "toluca", "naucalpan", "tlalnepantla"],
+    "Coahuila": ["coah", "coahuila", "saltillo", "torreon", "ramos arizpe"],
+    "San Luis Potosí": ["slp", "san luis potosi", "san luis"],
+    "Puebla": ["pue", "puebla"],
+    "Chihuahua": ["chih", "chihuahua", "juarez", "ciudad juarez"],
+    "Sonora": ["son", "sonora", "hermosillo", "nogales"],
+    "Baja California": ["bc", "baja california", "tijuana", "mexicali", "ensenada"],
+    "Aguascalientes": ["ags", "aguascalientes"],
+    "Tamaulipas": ["tamps", "tamaulipas", "reynosa", "matamoros", "nuevo laredo", "tampico"],
+    "Veracruz": ["ver", "veracruz", "xalapa", "coatzacoalcos"],
+    "Yucatán": ["yuc", "yucatan", "merida"],
+}
+
+
+def find_matching_ubicacion(raw_ubicacion: str, existing_ubicaciones: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not raw_ubicacion:
+        return None
+    import unicodedata, re
+    text = unicodedata.normalize('NFKD', str(raw_ubicacion)).encode('ASCII', 'ignore').decode('utf-8').lower()
+    text = re.sub(r'[^a-z0-9\s]', ' ', text)
+    tokens = set(text.split())
+
+    for canonical_state, syns in STATE_SYNONYMS.items():
+        if any(s in text or s in tokens for s in syns):
+            canonical_lower = unicodedata.normalize('NFKD', canonical_state).encode('ASCII', 'ignore').decode('utf-8').lower()
+            for u in existing_ubicaciones:
+                u_estado_clean = unicodedata.normalize('NFKD', u["estado"]).encode('ASCII', 'ignore').decode('utf-8').lower()
+                if canonical_lower == u_estado_clean:
+                    return u
+            return {"id_ubicacion": None, "estado": canonical_state, "pais": "México", "tipo": "Nacional"}
+
+    return None
+
+
+def unify_catalogs() -> dict[str, Any]:
+    now = _now_iso()
+    unified_companies_count = 0
+    unified_contacts_count = 0
+    details: list[str] = []
+
+    with database.connect() as db:
+        # A) UNIFICAR EMPRESAS EXISTENTES EN CATÁLOGO
+        empresas = [dict(r) for r in db.execute("SELECT id_empresa, nombre, sector FROM directorio_empresas").fetchall()]
+        groups: dict[str, list[dict[str, Any]]] = {}
+        for emp in empresas:
+            key = normalize_company_key(emp["nombre"])
+            if key:
+                groups.setdefault(key, []).append(emp)
+
+        for key, emp_list in groups.items():
+            if len(emp_list) > 1:
+                names = [e["nombre"] for e in emp_list]
+                canonical_name = choose_canonical_company_name(names)
+                canonical_emp = next((e for e in emp_list if e["nombre"] == canonical_name), emp_list[0])
+                canonical_id = canonical_emp["id_empresa"]
+
+                other_ids = [e["id_empresa"] for e in emp_list if e["id_empresa"] != canonical_id]
+                for oid in other_ids:
+                    db.execute(
+                        "UPDATE directorio_contactos SET id_empresa = ?, empresa_nombre = ?, updated_at = ? WHERE id_empresa = ?",
+                        (canonical_id, canonical_name, now, oid),
+                    )
+                    db.execute("DELETE FROM directorio_empresas WHERE id_empresa = ?", (oid,))
+
+                for name in names:
+                    if name != canonical_name:
+                        db.execute(
+                            "UPDATE directorio_contactos SET id_empresa = ?, empresa_nombre = ?, updated_at = ? WHERE LOWER(TRIM(empresa_nombre)) = LOWER(TRIM(?))",
+                            (canonical_id, canonical_name, now, name),
+                        )
+
+                unified_companies_count += len(other_ids)
+                details.append(f"Empresas unificadas: {', '.join(names)} -> '{canonical_name}'")
+
+        # B) ACTUALIZAR CONTACTOS QUE TENGAN VARIACIONES A LA EMPRESA CANÓNICA
+        canonical_empresas = [dict(r) for r in db.execute("SELECT id_empresa, nombre FROM directorio_empresas").fetchall()]
+        contacts = [dict(r) for r in db.execute("SELECT id_contacto, empresa_nombre, id_empresa FROM directorio_contactos WHERE empresa_nombre IS NOT NULL AND TRIM(empresa_nombre) != ''").fetchall()]
+        for c in contacts:
+            c_name = c["empresa_nombre"]
+            matched = find_matching_empresa(c_name, canonical_empresas)
+            if matched and (c["empresa_nombre"] != matched["nombre"] or c["id_empresa"] != matched["id_empresa"]):
+                db.execute(
+                    "UPDATE directorio_contactos SET id_empresa = ?, empresa_nombre = ?, updated_at = ? WHERE id_contacto = ?",
+                    (matched["id_empresa"], matched["nombre"], now, c["id_contacto"]),
+                )
+                unified_contacts_count += 1
+
+        # C) NORMALIZAR UBICACIONES EN CONTACTOS
+        canonical_ubis = [dict(r) for r in db.execute("SELECT id_ubicacion, tipo, pais, estado FROM directorio_ubicaciones").fetchall()]
+        contacts_ubi = [dict(r) for r in db.execute("SELECT id_contacto, ubicacion_texto, id_ubicacion, ubicacion_tipo FROM directorio_contactos WHERE ubicacion_texto IS NOT NULL AND TRIM(ubicacion_texto) != ''").fetchall()]
+        for cu in contacts_ubi:
+            m_ubi = find_matching_ubicacion(cu["ubicacion_texto"], canonical_ubis)
+            if m_ubi and m_ubi.get("id_ubicacion") and cu["id_ubicacion"] != m_ubi["id_ubicacion"]:
+                db.execute(
+                    "UPDATE directorio_contactos SET id_ubicacion = ?, ubicacion_tipo = ?, updated_at = ? WHERE id_contacto = ?",
+                    (m_ubi["id_ubicacion"], m_ubi["tipo"], now, cu["id_contacto"]),
+                )
+
+    return {
+        "ok": True,
+        "unified_companies": unified_companies_count,
+        "unified_contacts": unified_contacts_count,
+        "details": details,
+        "catalogs": get_catalogs(),
+    }
+
 def sync_missing_catalogs_from_contacts() -> None:
     now = _now_iso()
     try:
@@ -367,15 +549,15 @@ def save_contact(payload: dict[str, Any]) -> dict[str, Any]:
     now = _now_iso()
 
     with database.connect() as db:
-        # 1. EMPRESA: Buscar o crear automáticamente en el catálogo
+        # 1. EMPRESA: Buscar con detección inteligente y canónica (ej. NT TOOL DE MEXICO S.A. DE C.V. == NT Tool de México)
         if empresa_nombre:
-            emp_row = db.execute(
-                "SELECT id_empresa, nombre FROM directorio_empresas WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))",
-                (empresa_nombre,),
-            ).fetchone()
-            if emp_row:
-                id_empresa = emp_row["id_empresa"]
-                empresa_nombre = emp_row["nombre"]
+            existing_empresas = [
+                dict(r) for r in db.execute("SELECT id_empresa, nombre, sector FROM directorio_empresas").fetchall()
+            ]
+            matched_emp = find_matching_empresa(empresa_nombre, existing_empresas)
+            if matched_emp:
+                id_empresa = matched_emp["id_empresa"]
+                empresa_nombre = matched_emp["nombre"]
             else:
                 try:
                     db.execute(
@@ -391,19 +573,29 @@ def save_contact(payload: dict[str, Any]) -> dict[str, Any]:
                 except Exception as exc:
                     print(f"[Directorio] Auto-registro empresa omitido/existente: {exc}")
 
-        # 2. UBICACIÓN: Buscar o crear automáticamente en el catálogo
+        # 2. UBICACIÓN: Buscar o crear automáticamente con detección inteligente
         if ubicacion_texto:
-            ubi_row = db.execute(
-                """
-                SELECT id_ubicacion, pais, estado FROM directorio_ubicaciones
-                WHERE LOWER(?) LIKE '%' || LOWER(TRIM(estado)) || '%'
-                ORDER BY LENGTH(estado) DESC LIMIT 1
-                """,
-                (ubicacion_texto,),
-            ).fetchone()
-            if ubi_row:
-                id_ubicacion = ubi_row["id_ubicacion"]
+            existing_ubis = [
+                dict(r) for r in db.execute("SELECT id_ubicacion, tipo, pais, estado FROM directorio_ubicaciones").fetchall()
+            ]
+            matched_u = find_matching_ubicacion(ubicacion_texto, existing_ubis)
+            if matched_u and matched_u.get("id_ubicacion"):
+                id_ubicacion = matched_u["id_ubicacion"]
+                if not payload.get("ubicacion_tipo"):
+                    ubicacion_tipo = matched_u["tipo"]
             else:
+                ubi_row = db.execute(
+                    """
+                    SELECT id_ubicacion, pais, estado FROM directorio_ubicaciones
+                    WHERE LOWER(?) LIKE '%' || LOWER(TRIM(estado)) || '%'
+                    ORDER BY LENGTH(estado) DESC LIMIT 1
+                    """,
+                    (ubicacion_texto,),
+                ).fetchone()
+                if ubi_row:
+                    id_ubicacion = ubi_row["id_ubicacion"]
+
+            if not id_ubicacion:
                 parts = [p.strip() for p in ubicacion_texto.split(",") if p.strip()]
                 if len(parts) >= 2:
                     posible_estado = parts[-2]

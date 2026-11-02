@@ -88,6 +88,29 @@ class TestDirectorio(unittest.TestCase):
         self.assertEqual(c["foto_tarjeta_reverso"], "data:image/jpeg;base64,reverso456")
         self.assertEqual(c["ubicacion_tipo"], "Nacional")
 
+    def test_company_normalization_and_unification(self):
+        # 1. Registrar empresa base
+        directorio.save_empresa("NT Tool de México", "Industrial")
+        cats = directorio.get_catalogs()
+        nt_emp = next(e for e in cats["empresas"] if "NT Tool" in e["nombre"])
+
+        # 2. Guardar un contacto con la denominación legal larga en mayúsculas
+        p1 = {
+            "nombre_completo": "Pedro Ventas",
+            "empresa_nombre": "NT TOOL DE MEXICO S.A DE C.V",
+            "ubicacion_texto": "Querétaro, Qro.",
+        }
+        res1 = directorio.save_contact(p1)
+        self.assertTrue(res1["ok"])
+        c1 = res1["contact"]
+        # Debe vincularse a la empresa canónica existente y adoptar el nombre limpio
+        self.assertEqual(c1["id_empresa"], nt_emp["id_empresa"])
+        self.assertEqual(c1["empresa_nombre"], "NT Tool de México")
+
+        # 3. Probar unificación general
+        unify_res = directorio.unify_catalogs()
+        self.assertTrue(unify_res["ok"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1735,3 +1735,24 @@ if (btnDeleteFromModal) {
   });
 }
 
+
+const btnUnifyCats = $('#btn-unify-catalogs');
+if (btnUnifyCats) {
+  btnUnifyCats.addEventListener('click', async () => {
+    btnUnifyCats.disabled = true;
+    btnUnifyCats.textContent = 'Unificando catálogos...';
+    try {
+      const res = await api('/api/directorio/unificar-catalogos', { method: 'POST' });
+      const msg = (res.unified_companies > 0 || res.unified_contacts > 0)
+        ? `¡Listo! Se unificaron ${res.unified_companies} denominaciones duplicadas y ${res.unified_contacts} contactos.`
+        : 'Todos los catálogos y contactos ya están unificados.';
+      toast(msg);
+      await renderDirectorio();
+    } catch (err) {
+      toast(err.message, true);
+    } finally {
+      btnUnifyCats.disabled = false;
+      btnUnifyCats.textContent = '🔄 Unificar y Normalizar Catálogos Ahora';
+    }
+  });
+}
