@@ -62,7 +62,7 @@ async function api(path,options={}){
   const response=await fetch(path,{...options,headers});
   const body=await response.json().catch(()=>({}));
   if(response.status===401&&state.me){state.me=null;showLogin(false);}
-  if(!response.ok) throw new Error(body.error||'Request failed');
+  if(!response.ok) throw new Error(body.error||(response.status?`Error del servidor (${response.status} ${response.statusText})`:'Error de conexi\u00f3n con el servidor'));
   return body;
 }
 function toast(message,error=false){const box=$('#toast');box.textContent=message;box.className=`toast show${error?' error':''}`;clearTimeout(toast.timer);toast.timer=setTimeout(()=>box.className='toast',4500);}
@@ -1219,16 +1219,38 @@ if (btnOpenScan && dialogScan) {
 
 function processScanImageFile(file) {
   if (!file || !file.type.startsWith('image/')) {
-    toast('Por favor selecciona un archivo de imagen válido', true);
+    toast('Por favor selecciona un archivo de imagen valido', true);
     return;
   }
   const reader = new FileReader();
   reader.onload = (e) => {
-    state.directorio.currentScanBase64 = e.target.result;
-    scanPreviewImg.src = e.target.result;
-    $('.scan-dropzone-inner').classList.add('hidden');
-    scanPreviewWrap.classList.remove('hidden');
-    btnStartScan.disabled = false;
+    const rawData = e.target.result;
+    const img = new Image();
+    img.onload = () => {
+      const maxDim = 1600;
+      let width = img.width, height = img.height;
+      if (width > maxDim || height > maxDim) {
+        if (width > height) { height = Math.round((height * maxDim) / width); width = maxDim; }
+        else { width = Math.round((width * maxDim) / height); height = maxDim; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      const opt = canvas.toDataURL('image/jpeg', 0.85);
+      state.directorio.currentScanBase64 = opt;
+      scanPreviewImg.src = opt;
+      $('.scan-dropzone-inner').classList.add('hidden');
+      scanPreviewWrap.classList.remove('hidden');
+      btnStartScan.disabled = false;
+    };
+    img.onerror = () => {
+      state.directorio.currentScanBase64 = rawData;
+      scanPreviewImg.src = rawData;
+      $('.scan-dropzone-inner').classList.add('hidden');
+      scanPreviewWrap.classList.remove('hidden');
+      btnStartScan.disabled = false;
+    };
+    img.src = rawData;
   };
   reader.readAsDataURL(file);
 }
