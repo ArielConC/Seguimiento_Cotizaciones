@@ -1031,15 +1031,15 @@ function openCardPhotoViewer(title, front, back) {
 }
 
 function wireDirectorioEvents() {
-  $('.btn-edit-contact').forEach(b => {
+  $$('.btn-edit-contact').forEach(b => {
     b.onclick = () => openEditContact(Number(b.dataset.id));
   });
 
-  $('.btn-del-contact').forEach(b => {
+  $$('.btn-del-contact').forEach(b => {
     b.onclick = () => confirmDeleteContact(Number(b.dataset.id));
   });
 
-  $('.view-card-photo').forEach(b => {
+  $$('.view-card-photo').forEach(b => {
     b.onclick = () => {
       const front = b.dataset.photo;
       const back = b.dataset.back;
@@ -1299,6 +1299,9 @@ function resetScanModal() {
   if (scanRemoveBackImg) scanRemoveBackImg.classList.add('hidden');
   if (scanBackFileInput) scanBackFileInput.value = '';
 
+  const switchWrap = $('#scan-two-cards-switch-wrap');
+  if (switchWrap) switchWrap.classList.add('hidden');
+
   if (scanPreviewWrap) scanPreviewWrap.classList.add('hidden');
   if (scanBatchWrap) scanBatchWrap.classList.add('hidden');
 
@@ -1317,6 +1320,54 @@ function resetScanModal() {
   if (btnStartBatch) {
     btnStartBatch.classList.add('hidden');
     btnStartBatch.disabled = false;
+  }
+}
+
+function switchToBatchMode(files) {
+  state.directorio.batchFiles = files;
+  $('.scan-dropzone-inner')?.classList.add('hidden');
+  scanPreviewWrap?.classList.add('hidden');
+  scanBatchWrap?.classList.remove('hidden');
+
+  const countBadge = $('#batch-count-badge');
+  const countTitle = $('#batch-count-title');
+  const pairCheckbox = $('#batch-pair-checkbox');
+
+  if (countBadge) countBadge.textContent = `${files.length} seleccionadas`;
+  if (countTitle) countTitle.textContent = `Lote de ${files.length} Fotografías`;
+
+  const updateBatchLabel = () => {
+    if (!btnStartBatch) return;
+    const isPaired = pairCheckbox?.checked || false;
+    const cardsCount = isPaired ? Math.ceil(files.length / 2) : files.length;
+    btnStartBatch.innerHTML = isPaired 
+      ? `🚀 Procesar Lote (${cardsCount} Tarjetas de 2 Caras)`
+      : `🚀 Procesar Lote (${cardsCount} Tarjetas)`;
+  };
+
+  if (pairCheckbox) {
+    pairCheckbox.onchange = updateBatchLabel;
+  }
+  updateBatchLabel();
+
+  btnStartScan?.classList.add('hidden');
+  if (btnStartBatch) {
+    btnStartBatch.classList.remove('hidden');
+    btnStartBatch.disabled = false;
+  }
+
+  const thumbsGrid = $('#batch-thumbnails-grid');
+  if (thumbsGrid) {
+    thumbsGrid.innerHTML = '';
+    for (let i = 0; i < Math.min(files.length, 60); i++) {
+      const thumb = document.createElement('div');
+      thumb.className = 'batch-thumb-item';
+      thumb.id = `batch-thumb-${i}`;
+      const img = document.createElement('img');
+      img.src = URL.createObjectURL(files[i]);
+      thumb.appendChild(img);
+      thumbsGrid.appendChild(thumb);
+    }
   }
 }
 
@@ -1389,58 +1440,70 @@ async function handleSelectedFiles(filesList) {
     return;
   }
 
+  const switchWrap = $('#scan-two-cards-switch-wrap');
+
   if (files.length === 1) {
-    // MODO INDIVIDUAL
+    // 1 sola imagen: se coloca en Frente, slot de Reverso disponible
     const file = files[0];
     const opt = await compressImageFile(file, 1600, 0.85);
     state.directorio.currentScanBase64 = opt;
     state.directorio.currentBackScanBase64 = '';
-    if (scanPreviewImg) scanPreviewImg.src = opt;
+    state.directorio.batchFiles = [file];
 
+    if (scanPreviewImg) scanPreviewImg.src = opt;
     if (scanBackPreviewImg) {
       scanBackPreviewImg.src = '';
       scanBackPreviewImg.classList.add('hidden');
     }
     if (scanBackPlaceholder) scanBackPlaceholder.classList.remove('hidden');
     if (scanRemoveBackImg) scanRemoveBackImg.classList.add('hidden');
+    if (switchWrap) switchWrap.classList.add('hidden');
 
     $('.scan-dropzone-inner')?.classList.add('hidden');
     if (scanBatchWrap) scanBatchWrap.classList.add('hidden');
     scanPreviewWrap?.classList.remove('hidden');
+
     if (btnStartScan) {
       btnStartScan.classList.remove('hidden');
       btnStartScan.disabled = false;
+      btnStartScan.innerHTML = '⚡ Extraer Datos con IA';
     }
     if (btnStartBatch) btnStartBatch.classList.add('hidden');
-  } else {
-    // MODO LOTE
+
+  } else if (files.length === 2) {
+    // EXACTAMENTE 2 IMÁGENES: Por defecto es FRENTE + REVERSO de la misma tarjeta!
+    const optFront = await compressImageFile(files[0], 1600, 0.85);
+    const optBack = await compressImageFile(files[1], 1600, 0.85);
+
+    state.directorio.currentScanBase64 = optFront;
+    state.directorio.currentBackScanBase64 = optBack;
     state.directorio.batchFiles = files;
+
+    if (scanPreviewImg) scanPreviewImg.src = optFront;
+    if (scanBackPreviewImg) {
+      scanBackPreviewImg.src = optBack;
+      scanBackPreviewImg.classList.remove('hidden');
+    }
+    if (scanBackPlaceholder) scanBackPlaceholder.classList.add('hidden');
+    if (scanRemoveBackImg) scanRemoveBackImg.classList.remove('hidden');
+    if (switchWrap) switchWrap.classList.remove('hidden');
+
     $('.scan-dropzone-inner')?.classList.add('hidden');
-    scanPreviewWrap?.classList.add('hidden');
-    scanBatchWrap?.classList.remove('hidden');
+    if (scanBatchWrap) scanBatchWrap.classList.add('hidden');
+    scanPreviewWrap?.classList.remove('hidden');
 
-    $('#batch-count-badge').textContent = `${files.length} seleccionadas`;
-    $('#batch-count-title').textContent = `Lote de ${files.length} Fotografías`;
-    btnStartScan?.classList.add('hidden');
-    if (btnStartBatch) {
-      btnStartBatch.classList.remove('hidden');
-      btnStartBatch.disabled = false;
-      btnStartBatch.innerHTML = `🚀 Procesar Lote (${files.length} Fotografías)`;
+    if (btnStartScan) {
+      btnStartScan.classList.remove('hidden');
+      btnStartScan.disabled = false;
+      btnStartScan.innerHTML = '⚡ Extraer Datos con IA (Frente + Reverso)';
     }
+    if (btnStartBatch) btnStartBatch.classList.add('hidden');
 
-    const thumbsGrid = $('#batch-thumbnails-grid');
-    if (thumbsGrid) {
-      thumbsGrid.innerHTML = '';
-      for (let i = 0; i < Math.min(files.length, 60); i++) {
-        const thumb = document.createElement('div');
-        thumb.className = 'batch-thumb-item';
-        thumb.id = `batch-thumb-${i}`;
-        const img = document.createElement('img');
-        img.src = URL.createObjectURL(files[i]);
-        thumb.appendChild(img);
-        thumbsGrid.appendChild(thumb);
-      }
-    }
+    toast('Detectadas 2 fotos: asignadas automáticamente a Frente y Reverso.');
+  } else {
+    // 3 o más imágenes: Lote masivo
+    if (switchWrap) switchWrap.classList.add('hidden');
+    switchToBatchMode(files);
   }
 }
 
@@ -1647,5 +1710,14 @@ if (btnStartBatch) {
     toast(`¡Lote finalizado! Se digitalizaron y guardaron ${processedCount} tarjetas con sus fotos.`);
     dialogScan.close();
     await renderDirectorio();
+  });
+}
+
+const btnSwitchToBatch = $('#btn-switch-to-batch');
+if (btnSwitchToBatch) {
+  btnSwitchToBatch.addEventListener('click', () => {
+    if (state.directorio.batchFiles?.length) {
+      switchToBatchMode(state.directorio.batchFiles);
+    }
   });
 }

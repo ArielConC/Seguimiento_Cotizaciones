@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Quotation Follow-up | NT Tool</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261102.6">
+  <link rel="stylesheet" href="/static/styles.css?v=20261102.7">
 </head>
 <body>
   <div id="app" class="app-shell hidden">
@@ -213,7 +213,7 @@
     </div>
   </form>
 </dialog>
-  <script src="/static/app.js?v=20261102.6" defer></script>
+  <script src="/static/app.js?v=20261102.7" defer></script>
   <!-- DIALOG: ESCANEO DE TARJETAS CON IA -->
   <dialog id="dialog-scan-card" class="wide-dialog">
     <div class="dialog-content">
@@ -261,6 +261,11 @@
                 </div>
                 <button id="scan-remove-back-img" type="button" class="button ghost danger-btn hidden" style="font-size:12px; margin-top:6px;">Quitar Reverso</button>
               </div>
+            </div>
+            <div id="scan-two-cards-switch-wrap" class="hidden" style="text-align:center; margin-top:8px;">
+              <button id="btn-switch-to-batch" type="button" class="button ghost" style="font-size:12px; padding:4px 10px; color:#4f46e5;">
+                ¿Son 2 tarjetas diferentes? Cambiar a modo lote (2 contactos separados)
+              </button>
             </div>
           </div>
           <div id="scan-batch-wrap" class="scan-batch-wrap hidden">
