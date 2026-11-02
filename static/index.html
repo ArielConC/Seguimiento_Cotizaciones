@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Quotation Follow-up | NT Tool</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261102.13">
+  <link rel="stylesheet" href="/static/styles.css?v=20261102.14">
 </head>
 <body>
   <div id="app" class="app-shell hidden">
@@ -138,6 +138,9 @@
                 <button id="btn-dir-view-grid" class="button icon-btn active" type="button" title="Vista de Tarjetas">🗂️</button>
                 <button id="btn-dir-view-table" class="button icon-btn" type="button" title="Vista de Tabla">📋</button>
               </div>
+              <a href="/api/directorio/export.xlsx" class="button ghost" target="_blank" title="Descargar base de datos en Excel" style="display:inline-flex; align-items:center; gap:6px; text-decoration:none; font-weight:600;">
+                📊 <span>Descargar Excel</span>
+              </a>
               <button id="btn-open-scan" class="button primary btn-scan-ai" type="button">
                 📸 <span>Escanear Tarjeta (IA)</span>
               </button>
@@ -216,7 +219,7 @@
     </div>
   </form>
 </dialog>
-  <script src="/static/app.js?v=20261102.13" defer></script>
+  <script src="/static/app.js?v=20261102.14" defer></script>
   <!-- DIALOG: ESCANEO DE TARJETAS CON IA -->
   <dialog id="dialog-scan-card" class="wide-dialog">
     <div class="dialog-content">

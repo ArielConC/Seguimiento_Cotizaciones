@@ -144,6 +144,13 @@ class TestDirectorio(unittest.TestCase):
         cats_after = directorio.get_catalogs()
         self.assertFalse(any(e["nombre"] == "Empresa Temporal Unica 123" for e in cats_after["empresas"]))
 
+    def test_export_contacts_excel(self):
+        content, filename = directorio.export_contacts_excel()
+        self.assertIsInstance(content, bytes)
+        self.assertTrue(len(content) > 1000)
+        self.assertTrue(filename.startswith("Directorio_Contactos_"))
+        self.assertTrue(filename.endswith(".xlsx"))
+
 
 if __name__ == "__main__":
     unittest.main()

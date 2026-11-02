@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import base64
+import io
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import json
 import os
 import re
@@ -779,6 +782,88 @@ def save_ubicacion(tipo: str, pais: str, estado: str) -> dict[str, Any]:
             pass
     return {"ok": True, "catalogs": get_catalogs()}
 
+
+
+def export_contacts_excel() -> tuple[bytes, str]:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Directorio"
+
+    headers = [
+        "Nombre Completo",
+        "Puesto / Cargo",
+        "Empresa",
+        "Cobertura",
+        "Teléfono Principal",
+        "Teléfono Secundario",
+        "Correo Electrónico",
+        "Sitio Web",
+        "Ubicación",
+        "Dirección Física",
+        "Notas",
+        "Origen",
+        "Fecha de Registro",
+    ]
+
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid")
+    align_center = Alignment(horizontal="center", vertical="center", wrap_text=False)
+    align_left = Alignment(horizontal="left", vertical="center", wrap_text=False)
+    border_thin = Border(
+        left=Side(style="thin", color="E2E8F0"),
+        right=Side(style="thin", color="E2E8F0"),
+        top=Side(style="thin", color="E2E8F0"),
+        bottom=Side(style="thin", color="E2E8F0"),
+    )
+
+    ws.append(headers)
+    ws.row_dimensions[1].height = 26
+
+    for col_num in range(1, len(headers) + 1):
+        cell = ws.cell(row=1, column=col_num)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = align_center
+
+    contacts = list_contacts()
+    for row_idx, c in enumerate(contacts, start=2):
+        row_data = [
+            c.get("nombre_completo", ""),
+            c.get("puesto", ""),
+            c.get("empresa_display", "") or c.get("empresa_nombre", ""),
+            c.get("ubicacion_tipo", "Nacional"),
+            c.get("telefono", ""),
+            c.get("telefono_2", ""),
+            c.get("correo", ""),
+            c.get("sitio_web", ""),
+            c.get("ubicacion_display", "") or c.get("ubicacion_texto", ""),
+            c.get("direccion", ""),
+            c.get("notas", ""),
+            c.get("origen", "manual"),
+            (c.get("created_at") or "")[:10],
+        ]
+        ws.append(row_data)
+        ws.row_dimensions[row_idx].height = 20
+        for col_num in range(1, len(row_data) + 1):
+            cell = ws.cell(row=row_idx, column=col_num)
+            cell.alignment = align_left
+            cell.border = border_thin
+
+    for col in ws.columns:
+        max_len = 0
+        col_letter = col[0].column_letter
+        for cell in col:
+            val = str(cell.value or "")
+            if len(val) > max_len:
+                max_len = len(val)
+        ws.column_dimensions[col_letter].width = min(max(max_len + 3, 14), 45)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    content = buf.getvalue()
+    today_str = datetime.now().strftime("%Y%m%d")
+    filename = f"Directorio_Contactos_{today_str}.xlsx"
+    return content, filename
 
 def generate_vcard(id_contacto: int) -> tuple[str, str]:
     c = get_contact(id_contacto)

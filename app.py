@@ -199,6 +199,10 @@ class Handler(BaseHTTPRequestHandler):
                 cid = int(parsed.path.rsplit("/", 1)[1])
                 vcf_text, fname = directorio.generate_vcard(cid)
                 self._download(vcf_text.encode("utf-8"), "text/vcard; charset=utf-8", fname)
+            elif parsed.path == "/api/directorio/export.xlsx":
+                content, fname = directorio.export_contacts_excel()
+                auth.audit(user, "directorio_excel_exported", ip=self._client_ip())
+                self._download(content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fname)
             elif parsed.path in {"/api/reports/export.pdf","/api/special/reports/export.pdf","/api/reports/export.xlsx","/api/special/reports/export.xlsx"}:
                 workspace="special" if "/special/" in parsed.path else "standard"; data=self._report(workspace,params,user)
                 language=data["language"]; slug=f"{workspace}_follow_up_{data['start_date']}_{data['end_date']}"
