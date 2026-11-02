@@ -398,13 +398,39 @@ def _clean_and_parse_json(text: str) -> dict[str, Any]:
     return json.loads(text)
 
 
+def _get_supported_gemini_models(api_key: str) -> list[str]:
+    """Descubre los modelos con soporte generateContent disponibles para la clave actual."""
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+        req = urllib.request.Request(url, headers={"User-Agent": "Directorio-App"}, method="GET")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            models = []
+            for item in data.get("models", []):
+                methods = item.get("supportedGenerationMethods", [])
+                if "generateContent" in methods:
+                    # Formato "models/gemini-..." -> extraer "gemini-..."
+                    name = item.get("name", "").replace("models/", "").strip()
+                    if name:
+                        models.append(name)
+            if models:
+                # Priorizar los modelos Flash livianos
+                flash_models = [m for m in models if "flash" in m]
+                other_models = [m for m in models if "flash" not in m]
+                return flash_models + other_models
+    except Exception as exc:
+        print(f"[Directorio AI] No se pudo listar modelos dinámicamente: {exc}", flush=True)
+    return []
+
+
 def scan_card_ai(image_base64: str, mime_type: str = "image/jpeg") -> dict[str, Any]:
     api_key = _load_env_gemini_key()
     if not api_key:
-        raise ValueError(
-            "No se ha configurado la clave GEMINI_API_KEY. "
-            "Por favor, agrégala en la variable de entorno o en un archivo .env para habilitar el escáner con IA."
-        )
+        return {
+            "ok": False,
+            "extracted": {},
+            "message": "GEMINI_API_KEY no configurada. Puedes ingresar los datos manualmente.",
+        }
 
     # Limpiar prefijo data URI si viene presente
     if "," in image_base64:
@@ -436,39 +462,47 @@ def scan_card_ai(image_base64: str, mime_type: str = "image/jpeg") -> dict[str, 
         "Si algún campo no aparece en la tarjeta, déjalo como cadena vacía ''. No inventes datos."
     )
 
-    # Intentar primero con gemini-3.8-flash (habilitado para la cuenta) y respaldos
-    preferred_model = os.environ.get("GEMINI_MODEL", "").strip()
-    candidate_models = [m for m in [preferred_model, "gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"] if m]
+    # Detectar dinámicamente qué modelos tiene disponibles esta API Key en Google
+    available_models = _get_supported_gemini_models(api_key)
+    env_model = os.environ.get("GEMINI_MODEL", "").strip()
+
+    candidate_models = []
+    if env_model:
+        candidate_models.append(env_model)
+    candidate_models.extend(available_models)
+    # Modelos de respaldo estándar
+    candidate_models.extend(["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-3.8-flash"])
+
     # Deduplicar manteniendo orden
     models_to_try = []
     for m in candidate_models:
-        if m not in models_to_try:
+        if m and m not in models_to_try:
             models_to_try.append(m)
+
+    req_body = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt},
+                    {
+                        "inline_data": {
+                            "mime_type": mime_type,
+                            "data": image_base64,
+                        }
+                    },
+                ]
+            }
+        ],
+        "generationConfig": {
+            "response_mime_type": "application/json",
+            "temperature": 0.1,
+            "maxOutputTokens": 800,
+        },
+    }
 
     last_error_msg = ""
     for idx, model_name in enumerate(models_to_try):
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-        req_body = {
-            "contents": [
-                {
-                    "parts": [
-                        {"text": prompt},
-                        {
-                            "inline_data": {
-                                "mime_type": mime_type,
-                                "data": image_base64,
-                            }
-                        },
-                    ]
-                }
-            ],
-            "generationConfig": {
-                "response_mime_type": "application/json",
-                "temperature": 0.1,
-                "maxOutputTokens": 800,
-            },
-        }
-
         req = urllib.request.Request(
             url,
             data=json.dumps(req_body).encode("utf-8"),
@@ -477,15 +511,14 @@ def scan_card_ai(image_base64: str, mime_type: str = "image/jpeg") -> dict[str, 
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=75) as resp:
+            with urllib.request.urlopen(req, timeout=40) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 candidates = data.get("candidates") or []
                 if not candidates:
-                    raise RuntimeError("Gemini no devolvió respuesta para la tarjeta")
+                    continue
                 parts = candidates[0].get("content", {}).get("parts") or []
                 if not parts or "text" not in parts[0]:
-                    finish_reason = candidates[0].get("finishReason", "DESCONOCIDO")
-                    raise RuntimeError(f"Gemini no devolvió texto. Motivo: {finish_reason}")
+                    continue
                 content_text = parts[0]["text"]
                 parsed_json = _clean_and_parse_json(content_text)
                 return {"ok": True, "extracted": parsed_json, "model_used": model_name}
@@ -497,23 +530,19 @@ def scan_card_ai(image_base64: str, mime_type: str = "image/jpeg") -> dict[str, 
             except Exception:
                 msg = err_msg
             last_error_msg = msg
-            print(f"[Directorio AI] Error HTTP {exc.code} ({model_name}): {msg}", flush=True)
-
-            # Si es saturación (503 / high demand / overloaded), cuota (429) o modelo no disponible, intentar con el siguiente modelo
-            is_retriable = exc.code in (503, 429, 404) or any(
-                term in msg.lower() for term in ["high demand", "overloaded", "temporarily", "not available", "quota"]
-            )
-            if is_retriable and idx < len(models_to_try) - 1:
-                time.sleep(0.5)
-                continue
-            raise RuntimeError(f"Error en la API de Gemini ({model_name}): {msg}") from exc
+            print(f"[Directorio AI] Aviso HTTP {exc.code} con {model_name}: {msg}", flush=True)
+            time.sleep(0.3)
+            continue
         except Exception as exc:
             last_error_msg = str(exc)
-            print(f"[Directorio AI] Excepción ({model_name}): {exc}", flush=True)
-            if idx < len(models_to_try) - 1:
-                time.sleep(0.5)
-                continue
-            raise RuntimeError(f"Error al procesar la tarjeta con IA ({model_name}): {exc}") from exc
+            print(f"[Directorio AI] Aviso con {model_name}: {exc}", flush=True)
+            time.sleep(0.3)
+            continue
 
-    raise RuntimeError(f"No fue posible contactar a Gemini con ningún modelo disponible: {last_error_msg}")
+    # Si ningún modelo pudo procesar la imagen, se responde ok=False pero SIN error 500
+    return {
+        "ok": False,
+        "extracted": {},
+        "message": f"No se pudo extraer texto automáticamente ({last_error_msg}). Puedes ingresar los datos manualmente.",
+    }
 

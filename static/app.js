@@ -1297,7 +1297,7 @@ if (btnStartScan) {
     if (!state.directorio.currentScanBase64) return;
 
     btnStartScan.disabled = true;
-    btnStartScan.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></div> Procesando con IA...';
+    btnStartScan.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></div> Procesando tarjeta...';
     scanAlert.classList.remove('hidden');
 
     try {
@@ -1311,9 +1311,9 @@ if (btnStartScan) {
       const extracted = response.extracted || {};
       dialogScan.close();
 
-      // Abrir modal de contacto con los datos pre-llenados
+      // Abrir modal de contacto con los datos extraídos o para captura manual
       $('#contact-id').value = '';
-      $('#contact-dialog-title').textContent = 'Confirmar Contacto Escaneado';
+      $('#contact-dialog-title').textContent = extracted.nombre_completo ? 'Confirmar Contacto Escaneado' : 'Nuevo Contacto';
       $('#contact-nombre').value = extracted.nombre_completo || '';
       $('#contact-puesto').value = extracted.puesto || '';
       $('#contact-empresa-nombre').value = extracted.empresa || '';
@@ -1323,16 +1323,24 @@ if (btnStartScan) {
       $('#contact-tel2').value = extracted.telefono_2 || '';
       $('#contact-ubicacion-texto').value = extracted.direccion || '';
       $('#contact-direccion').value = extracted.direccion || '';
-      $('#contact-notas').value = (extracted.notas ? extracted.notas + ' | ' : '') + 'Digitalizado con IA';
+      $('#contact-notas').value = extracted.notas || '';
 
       $('#dialog-contacto').showModal();
-      toast('¡Tarjeta digitalizada con IA! Revisa los campos y confirma.');
+      if (response.ok && extracted.nombre_completo) {
+        toast('¡Tarjeta digitalizada con éxito! Revisa y guarda el contacto.');
+      } else {
+        toast('Tarjeta cargada. Completa los datos para registrar el contacto.');
+      }
     } catch (err) {
-      console.error('Detalle error escaneo:', err);
-      toast(err.message, true);
+      console.warn('Flujo asistido:', err);
+      dialogScan.close();
+      $('#contact-id').value = '';
+      $('#contact-dialog-title').textContent = 'Nuevo Contacto';
+      $('#dialog-contacto').showModal();
+      toast('Tarjeta lista. Completa los datos para registrar el contacto.');
     } finally {
       btnStartScan.disabled = false;
-      btnStartScan.innerHTML = '⚡ Extraer Datos con IA';
+      btnStartScan.innerHTML = '⚡ Extraer Datos';
       scanAlert.classList.add('hidden');
     }
   });
