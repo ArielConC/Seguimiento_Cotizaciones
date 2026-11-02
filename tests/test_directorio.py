@@ -122,6 +122,28 @@ class TestDirectorio(unittest.TestCase):
         c = res["contact"]
         self.assertEqual(c["sitio_web"], "https://www.osgroyco.com.mx")
 
+    def test_prune_orphaned_catalogs_on_delete(self):
+        # 1. Guardar contacto con empresa y ubicación únicas
+        p = {
+            "nombre_completo": "Contacto Temporal",
+            "empresa_nombre": "Empresa Temporal Unica 123",
+            "ubicacion_texto": "Colima, Colima",
+        }
+        res = directorio.save_contact(p)
+        self.assertTrue(res["ok"])
+        cid = res["contact"]["id_contacto"]
+
+        cats_before = directorio.get_catalogs()
+        self.assertTrue(any(e["nombre"] == "Empresa Temporal Unica 123" for e in cats_before["empresas"]))
+
+        # 2. Eliminar el contacto
+        del_res = directorio.delete_contact(cid)
+        self.assertTrue(del_res["ok"])
+
+        # 3. Verificar que la empresa y ubicación únicas fueron podadas automáticamente
+        cats_after = directorio.get_catalogs()
+        self.assertFalse(any(e["nombre"] == "Empresa Temporal Unica 123" for e in cats_after["empresas"]))
+
 
 if __name__ == "__main__":
     unittest.main()

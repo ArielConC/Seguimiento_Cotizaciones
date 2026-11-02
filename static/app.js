@@ -863,7 +863,10 @@ async function renderDirectorio() {
 
     const dlEmp = $('#datalist-empresas');
     if (dlEmp) {
-      dlEmp.innerHTML = state.directorio.catalogs.empresas.map(e => `<option value="${esc(e.nombre)}">`).join('');
+      const activeEmps = Array.from(new Set(
+        (state.directorio.contacts || []).map(c => c.empresa_display || c.empresa_nombre).filter(Boolean)
+      )).sort((a, b) => a.localeCompare(b, 'es'));
+      dlEmp.innerHTML = activeEmps.map(name => `<option value="${esc(name)}">`).join('');
     }
 
     const dlUbi = $('#datalist-ubicaciones');

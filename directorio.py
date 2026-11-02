@@ -118,6 +118,7 @@ def init_db() -> None:
             pass
     _maybe_migrate_legacy_data()
     sync_missing_catalogs_from_contacts()
+    prune_orphan_catalogs()  # Limpieza inicial de huérfanos
 
 
 
@@ -691,14 +692,53 @@ def save_contact(payload: dict[str, Any]) -> dict[str, Any]:
             )
             saved_id = cur.lastrowid
 
+    prune_orphan_catalogs()
     contact = get_contact(saved_id)
     return {"ok": True, "contact": contact}
 
 
+
+def prune_orphan_catalogs(db=None) -> dict[str, int]:
+    """
+    Elimina empresas y ubicaciones que ya no tienen ningún contacto asociado,
+    manteniendo los catálogos limpios y reflejando únicamente los que existen.
+    """
+    def _do_prune(conn):
+        cur_emp = conn.execute(
+            """
+            DELETE FROM directorio_empresas
+            WHERE id_empresa NOT IN (
+                SELECT DISTINCT id_empresa FROM directorio_contactos WHERE id_empresa IS NOT NULL
+            )
+            AND LOWER(TRIM(nombre)) NOT IN (
+                SELECT DISTINCT LOWER(TRIM(empresa_nombre)) FROM directorio_contactos
+                WHERE empresa_nombre IS NOT NULL AND TRIM(empresa_nombre) != ''
+            )
+            """
+        )
+        emp_deleted = cur_emp.rowcount if cur_emp.rowcount >= 0 else 0
+
+        cur_ubi = conn.execute(
+            """
+            DELETE FROM directorio_ubicaciones
+            WHERE id_ubicacion NOT IN (
+                SELECT DISTINCT id_ubicacion FROM directorio_contactos WHERE id_ubicacion IS NOT NULL
+            )
+            """
+        )
+        ubi_deleted = cur_ubi.rowcount if cur_ubi.rowcount >= 0 else 0
+        return {"deleted_empresas": emp_deleted, "deleted_ubicaciones": ubi_deleted}
+
+    if db is not None:
+        return _do_prune(db)
+    with database.connect() as conn:
+        return _do_prune(conn)
+
 def delete_contact(id_contacto: int) -> dict[str, Any]:
     with database.connect() as db:
         db.execute("DELETE FROM directorio_contactos WHERE id_contacto = ?", (id_contacto,))
-    return {"ok": True, "id_contacto": id_contacto}
+        prune_orphan_catalogs(db)
+    return {"ok": True, "id_contacto": id_contacto, "catalogs": get_catalogs()}
 
 
 def get_catalogs() -> dict[str, Any]:
