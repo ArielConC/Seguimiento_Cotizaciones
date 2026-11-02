@@ -112,7 +112,8 @@ def _public(row: Any, csrf_token: str = "") -> dict[str, Any]:
     user["can_team_reports"] = user["role"] in TEAM_REPORT_ROLES
     user["can_edit"] = user["role"] != "readonly"
     user["can_view_audit"] = user["role"] == "secretadmin"
-    user["management_profile"] = bool(user.get("is_manager",0))
+    # The application now has a single, unified Manager experience.
+    user["management_profile"] = True
     if csrf_token:
         user["csrf_token"] = csrf_token
     return user
@@ -240,9 +241,7 @@ def can_admin(user: dict[str, Any]) -> bool:
 
 
 def is_management_profile(user: dict[str, Any]) -> bool:
-    if user.get("role")== "secretadmin":
-        return True
-    return bool(user.get("is_manager",0))
+    return bool(user)
 
 
 def can_team_reports(user: dict[str, Any]) -> bool:
@@ -322,12 +321,9 @@ def update_user(requester: dict[str, Any], user_id: int, payload: dict[str, Any]
         agent=str(payload.get("agent_name",current["agent_name"])).strip()
         language=str(payload.get("language",current["language"])); language=language if language in {"en","es","ja"} else "en"
         
-        # --- CORRECCIÓN: Convertir a diccionario antes de usar .get() ---
+        # Keep the legacy column untouched for backward-compatible databases.
         current_dict = dict(current)
         is_manager = current_dict.get("is_manager", 0)
-        
-        if requester.get("role") == "secretadmin" and "management_profile" in payload:
-            is_manager = int(bool(payload["management_profile"]))
             
         db.execute("UPDATE users SET display_name=?,role=?,agent_name=?,language=?,active=?,is_manager=?,updated_at=? WHERE id=?",
                    (name,role,agent,language,active,is_manager,database.now_iso(),user_id))

@@ -429,7 +429,8 @@ class V2WorkflowTests(unittest.TestCase):
         self.assertIn("$('#monthly-clear').addEventListener",javascript)
         self.assertIn("$('#monthly-status').addEventListener",javascript)
         self.assertIn('<option value="ja">',html)
-        self.assertIn("Perfil de visualización",javascript)
+        self.assertNotIn("Perfil de visualización",javascript)
+        self.assertNotIn("Developer (Vista Completa)",javascript)
         japanese=auth.update_preferences(self.user,"ja")
         self.assertEqual(japanese["language"],"ja")
 
@@ -682,6 +683,18 @@ class V2WorkflowTests(unittest.TestCase):
         self.assertEqual(unmatched["company_name"],"DISTRIBUTOR SA")
         javascript=(PROJECT_DIR/"static"/"app.js").read_text(encoding="utf-8")
         self.assertIn("q.distributor_code||t('no_code')",javascript)
+
+    def test_application_exposes_only_the_manager_experience(self)->None:
+        index=(PROJECT_DIR/"static"/"index.html").read_text(encoding="utf-8")
+        javascript=(PROJECT_DIR/"static"/"app.js").read_text(encoding="utf-8")
+        self.assertIn('class="nav-item active" data-view="management"',index)
+        for developer_view in ("dashboard","pending","managed","safe","po_missing","po","lost","archive","historical"):
+            self.assertNotIn(f'data-view="{developer_view}"',index)
+        for removed_control in ("setupSecretAdminToggle","secretadmin-view-toggle","Vista: DEVELOPER","edit-role"):
+            self.assertNotIn(removed_control,javascript)
+        self.assertIn("await navigate('management')",javascript)
+        self.assertTrue(self.user["management_profile"])
+        self.assertTrue(auth.is_management_profile(self.user))
 
 
 if __name__=="__main__": unittest.main()

@@ -1,4 +1,4 @@
-const state={me:null,system:null,view:'dashboard',quote:null,language:'en',importToken:null,bootstrap:false,users:[],calendar:null};
+const state={me:null,system:null,view:'management',quote:null,language:'en',importToken:null,bootstrap:false,users:[],calendar:null};
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const esc=(v='')=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 
@@ -94,63 +94,6 @@ function eventLabel(s){return ({created:state.language==='es'?'Creada':'Created'
 function renderLegend(){if(!state.system)return;$('#priority-legend').innerHTML=state.system==='special'?`<p>${t('priority')}</p><div><b class="priority s">S</b><small>Top 10%</small></div><div><b class="priority a">A</b><small>11–30%</small></div><div><b class="priority b">B</b><small>31–60%</small></div><div><b class="priority c">C</b><small>61–100%</small></div>`:`<p>${t('priority')}</p><div><b class="priority s">S</b><small>USD 5,001+</small></div><div><b class="priority a">A</b><small>USD 1,001–5,000</small></div><div><b class="priority b">B</b><small>USD 501–1,000</small></div><div><b class="priority c">C</b><small>USD 0–500</small></div>`;}
 
 function showLogin(bootstrap){state.bootstrap=bootstrap;$('#app').classList.add('hidden');$('#login-subtitle').textContent=bootstrap?t('initial_setup'):t('signin');$('#login-submit').textContent=bootstrap?(state.language==='es'?'Crear Superadmin':'Create Superadmin'):t('signin');$('#bootstrap-note').classList.toggle('hidden',!bootstrap);$('#bootstrap-note').textContent=bootstrap?t('initial_setup'):'';$('#login-dialog').showModal();}
-// --- NUEVA FUNCIÓN: Botón flotante para SecretAdmin ---
-function setupSecretAdminToggle() {
-    // Si no eres SecretAdmin, nos aseguramos de que no exista el botón
-    if (state.me?.role?.toLowerCase() !== 'secretadmin') {
-        if (document.getElementById('secretadmin-view-toggle')) {
-            document.getElementById('secretadmin-view-toggle').style.display = 'none';
-        }
-        return;
-    }
-
-    let toggleBtn = document.getElementById('secretadmin-view-toggle');
-    if (!toggleBtn) {
-        // Creamos el botón flotante
-        toggleBtn = document.createElement('button');
-        toggleBtn.id = 'secretadmin-view-toggle';
-        toggleBtn.style.position = 'fixed';
-        toggleBtn.style.bottom = '20px';
-        toggleBtn.style.right = '20px';
-        toggleBtn.style.zIndex = '9999';
-        toggleBtn.style.padding = '12px 20px';
-        toggleBtn.style.borderRadius = '30px';
-        toggleBtn.style.border = 'none';
-        toggleBtn.style.fontWeight = 'bold';
-        toggleBtn.style.cursor = 'pointer';
-        toggleBtn.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
-        toggleBtn.style.transition = 'all 0.3s ease';
-        document.body.appendChild(toggleBtn);
-        
-        // Lo que pasa cuando haces clic
-        toggleBtn.addEventListener('click', async () => {
-            // Cambiamos tu estado de forma local (sin tocar la BD)
-            state.me.management_profile = !state.me.management_profile;
-            updateToggleUI();
-            
-            // Ocultamos/Mostramos las pestañas de navegación al vuelo
-            $$('.regular-nav').forEach(e => e.classList.toggle('hidden', !!state.me.management_profile));
-            $$('.manager-only').forEach(e => e.classList.toggle('hidden', !state.me.management_profile));
-            
-            // Te mandamos a la pantalla correcta
-            if (state.system) {
-                await navigate(state.me.management_profile ? 'management' : 'dashboard');
-            }
-        });
-    }
-    
-    // Función para cambiar los colores del botón dependiendo la vista
-    function updateToggleUI() {
-        toggleBtn.innerHTML = state.me.management_profile ? '👀 Vista: MANAGER' : '👀 Vista: DEVELOPER';
-        toggleBtn.style.background = state.me.management_profile ? '#d97706' : '#2563eb'; // Naranja o Azul
-        toggleBtn.style.color = '#fff';
-    }
-    
-    updateToggleUI();
-    toggleBtn.style.display = 'block';
-}
-
-// --- REEMPLAZO: Conectamos el botón al inicio de sesión ---
 async function enterApp(user){
   state.me=user;
   state.language=$('#login-language').value||user.language||'en';
@@ -161,15 +104,9 @@ async function enterApp(user){
   $('#login-dialog').close();
   $$('.admin-only').forEach(e=>e.classList.toggle('hidden',!user.can_admin_users));
   $$('.audit-only').forEach(e=>e.classList.toggle('hidden',!user.can_view_audit));
-  $$('.regular-nav').forEach(e=>e.classList.toggle('hidden',!!user.management_profile));
-  $$('.manager-only').forEach(e=>e.classList.toggle('hidden',!user.management_profile));
   $('#upload-button').classList.toggle('hidden',!user.can_edit);
   $$('.invoice-import-only').forEach(e=>e.classList.toggle('hidden',!user.can_edit));
   $('#report-scope').options[1].disabled=!user.can_team_reports;
-  
-  // Encendemos el botón de SecretAdmin
-  setupSecretAdminToggle();
-  
   $('#system-dialog').showModal();
   if(user.must_change_password){
       $('#password-notice').textContent=state.language==='es'?'Debes reemplazar la contraseña temporal antes de continuar.':'Replace the temporary password before continuing.';
@@ -190,11 +127,9 @@ async function selectSystem(system){
   $$('.standard-only').forEach(e=>e.classList.toggle('hidden',system==='special'));
   if(!state.me?.can_edit)$$('.invoice-import-only').forEach(e=>e.classList.add('hidden'));
 
-  $$('.regular-nav').forEach(e=>e.classList.toggle('hidden',!!state.me?.management_profile));
-  $$('.manager-only').forEach(e=>e.classList.toggle('hidden',!state.me?.management_profile));
   renderLegend();
   await Promise.all([loadAgents(),loadRanks()]);
-  await navigate(state.me?.management_profile?'management':'dashboard');
+  await navigate('management');
 }
 $$('[data-system]').forEach(b=>b.addEventListener('click',()=>selectSystem(b.dataset.system).catch(e=>toast(e.message,true))));
 $('#system-button').addEventListener('click',()=>$('#system-dialog').showModal());
@@ -234,7 +169,7 @@ async function loadRanks(){if(state.system!=='special')return;const ranks=await 
   $('#rank-filter').innerHTML='<option value="">All</option>'+ranks.map(r=>`<option>${esc(r)}</option>`).join('');}
 
 async function navigate(view){
-  if(state.me?.management_profile&&!['management','monthly_report','reports','users'].includes(view))view='management';
+  if(!['management','monthly_report','reports','users'].includes(view))view='management';
   state.view=view;
   $$('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
   $$('.view').forEach(v=>v.classList.remove('active'));
@@ -675,7 +610,7 @@ $('#report-preview').addEventListener('click',()=>renderReport().catch(e=>toast(
 $('#upload-button').addEventListener('click',()=>{state.importToken=null;$('#upload-file').value='';$('#upload-file').accept=state.system==='special'?'.xlsx':'.xlsx,.txt';$('#import-preview').classList.add('hidden');$('#confirm-import').classList.add('hidden');$('#preview-import').classList.remove('hidden');$('#upload-title').textContent=state.system==='special'?'Upload Special Quotations':'Upload Follow Up Quotations';$('#upload-help').textContent=state.system==='special'?'B date, E company, F rank, G item code, H model, I quantity, J unit price, and AA NT Tool agent. Values remain in JPY.':'Upload the daily Excel or tab-delimited TXT report. A date, B series, C folio, D distributor, E total with tax, F End User, G distributor agent, I customer order, J NT Tool agent, and K internal net total. Values remain in USD.';$('#upload-dialog').showModal();});
 function toBase64(buffer){let binary='';const bytes=new Uint8Array(buffer);for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));return btoa(binary);}
 $('#upload-form').addEventListener('submit',async e=>{e.preventDefault();const file=$('#upload-file').files[0];if(!file)return;const button=$('#preview-import');button.disabled=true;try{const data=await api(`${prefix()}/import/preview`,{method:'POST',body:JSON.stringify({filename:file.name,content_base64:toBase64(await file.arrayBuffer())})});state.importToken=data.token;$('#import-preview').classList.remove('hidden');$('#import-preview').innerHTML=`<div class="preview-metrics"><div><b>${data.rows_seen}</b><span>${t('rows')}</span></div><div><b>${data.new}</b><span>${t('new')}</span></div><div><b>${data.updated}</b><span>${t('updated')}</span></div><div><b>${data.unchanged||0}</b><span>${t('unchanged')}</span></div><div><b>${data.duplicates}</b><span>${t('duplicates')}</span></div><div><b>${data.archived||0}</b><span>${t('excluded')}</span></div><div><b>${data.errors}</b><span>${t('invalid')}</span></div></div>${data.error_detail?.length?`<div class="form-error">${data.error_detail.map(x=>`Row ${x.row}: ${esc(x.error)}`).join('<br>')}</div>`:''}`;$('#confirm-import').classList.remove('hidden');button.classList.add('hidden');}catch(err){toast(err.message,true);}finally{button.disabled=false;}});
-$('#confirm-import').addEventListener('click',async()=>{if(!state.importToken)return;const button=$('#confirm-import');button.disabled=true;try{const data=await api(`${prefix()}/import/confirm`,{method:'POST',body:JSON.stringify({token:state.importToken})});$('#upload-dialog').close();toast(`${t('import_complete')}: ${data.inserted} ${t('new')}, ${data.updated} ${t('updated')}, ${data.unchanged||0} ${t('unchanged')}`);await loadAgents();await navigate('dashboard');}catch(err){toast(err.message,true);}finally{button.disabled=false;}});
+$('#confirm-import').addEventListener('click',async()=>{if(!state.importToken)return;const button=$('#confirm-import');button.disabled=true;try{const data=await api(`${prefix()}/import/confirm`,{method:'POST',body:JSON.stringify({token:state.importToken})});$('#upload-dialog').close();toast(`${t('import_complete')}: ${data.inserted} ${t('new')}, ${data.updated} ${t('updated')}, ${data.unchanged||0} ${t('unchanged')}`);await loadAgents();await navigate('management');}catch(err){toast(err.message,true);}finally{button.disabled=false;}});
 
 async function renderUsers(){const users=await api('/api/users');state.users=users;$('#users-table').innerHTML=`<table><thead><tr><th></th><th>${t('username')}</th><th>${t('display_name')}</th><th>${t('agent')}</th><th>${t('active')}</th></tr></thead><tbody>${users.map(u=>`<tr><td><button class="button primary edit-user" data-id="${u.id}">${t('edit_user')}</button></td><td class="folio">${esc(u.username)}</td><td>${esc(u.display_name)}</td><td>${esc(u.agent_name)}</td><td>${u.active?'✓':'—'}</td></tr>`).join('')}</tbody></table>`;const panel=$('#audit-panel');panel.classList.toggle('hidden',!state.me.can_view_audit);if(state.me.can_view_audit){const audit=await api('/api/audit?limit=100');$('#audit-table').innerHTML=`<table><thead><tr><th>${t('date')}</th><th>${t('user')}</th><th>Action</th><th>${t('details')}</th></tr></thead><tbody>${audit.map(a=>`<tr><td>${fmtDT(a.created_at)}</td><td>${esc(a.user_name)}${a.emergency_admin?' <span class="warning-badge">Emergency</span>':''}</td><td>${esc(a.action)}</td><td>${esc(a.detail)}</td></tr>`).join('')}</tbody></table>`;}else{$('#audit-table').innerHTML='';}$$('.edit-user').forEach(b=>b.addEventListener('click',()=>openUser(Number(b.dataset.id))));}
 function temporaryPassword(){const chars='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';const bytes=new Uint32Array(14);crypto.getRandomValues(bytes);return [...bytes].map(n=>chars[n%chars.length]).join('');}
@@ -693,36 +628,6 @@ function openUser(id) {
     $('#edit-active').checked = !!u.active;
     $('#edit-password').value = '';
 
-    // --- MÉTODO INFALIBLE: Pegar el HTML directamente ---
-    if (!document.getElementById('edit-role-wrapper')) {
-        const htmlSelector = `
-        <div id="edit-role-wrapper" style="margin: 15px 0; padding: 10px; background: #f4f6f8; border: 1px solid #cbd5e1; border-radius: 6px;">
-            <span style="font-weight: bold; display: block; margin-bottom: 5px; color: #0f172a;">
-                ⚙️ ${state.language === 'es' ? 'Perfil de visualización' : 'View profile'}
-            </span>
-            <select id="edit-role" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
-                <option value="0">Developer (Vista Completa)</option>
-                <option value="1">Manager (Vista Limitada)</option>
-            </select>
-        </div>`;
-        
-        // Lo insertamos justo antes de la caja de contraseña para que no rompa tu diseño
-        const cajaPassword = document.getElementById('edit-password');
-        if (cajaPassword) {
-            cajaPassword.insertAdjacentHTML('beforebegin', htmlSelector);
-        }
-    }
-    
-    // Asignar si es Manager (1) o Developer (0)
-    document.getElementById('edit-role').value = u.management_profile ? "1" : "0";
-    
-    // Imprimimos tu rol en la consola para confirmar que el sistema sabe quién eres
-    console.log("Tu rol actual es:", state.me?.role);
-    
-    // Hacemos visible la caja SOLO si eres secretadmin
-    const esSecretAdmin = state.me?.role === 'secretadmin';
-    document.getElementById('edit-role-wrapper').style.display = esSecretAdmin ? 'block' : 'none';
-
     if (!$('#user-edit-dialog').open) $('#user-edit-dialog').showModal();
 }
 
@@ -736,12 +641,6 @@ $('#user-edit-form').addEventListener('submit', async e => {
             active: $('#edit-active').checked,
             password: password
         };
-        
-        // Si es el SecretAdmin guardando, adjuntamos la decisión del rol
-        if (state.me.role === 'secretadmin') {
-            payload.management_profile = $('#edit-role').value === "1";
-        }
-
         await api(`/api/users/${$('#edit-user-id').value}`, {
             method: 'PATCH',
             body: JSON.stringify(payload)
