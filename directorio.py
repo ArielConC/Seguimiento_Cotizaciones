@@ -97,6 +97,19 @@ def init_db() -> None:
             db.execute(
                 """
                 UPDATE directorio_contactos
+                SET sitio_web = 'https://' || sitio_web
+                WHERE sitio_web IS NOT NULL
+                  AND TRIM(sitio_web) != ''
+                  AND LOWER(sitio_web) NOT LIKE 'http://%'
+                  AND LOWER(sitio_web) NOT LIKE 'https://%'
+                """
+            )
+        except Exception:
+            pass
+        try:
+            db.execute(
+                """
+                UPDATE directorio_contactos
                 SET ubicacion_tipo = 'Nacional'
                 WHERE ubicacion_tipo IS NULL OR ubicacion_tipo = '' OR ubicacion_tipo NOT IN ('Nacional', 'Internacional')
                 """
@@ -530,6 +543,8 @@ def save_contact(payload: dict[str, Any]) -> dict[str, Any]:
         id_ubicacion = int(id_ubicacion)
 
     sitio_web = str(payload.get("sitio_web", "")).strip()
+    if sitio_web and not sitio_web.lower().startswith(("http://", "https://")):
+        sitio_web = f"https://{sitio_web}"
     direccion = str(payload.get("direccion", "")).strip()
     notas = str(payload.get("notas", "")).strip()
     foto_tarjeta = str(payload.get("foto_tarjeta", "")).strip()

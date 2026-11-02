@@ -111,6 +111,17 @@ class TestDirectorio(unittest.TestCase):
         unify_res = directorio.unify_catalogs()
         self.assertTrue(unify_res["ok"])
 
+    def test_website_prefix_normalization(self):
+        p = {
+            "nombre_completo": "Sitio Test",
+            "empresa_nombre": "Empresa Web",
+            "sitio_web": "www.osgroyco.com.mx",
+        }
+        res = directorio.save_contact(p)
+        self.assertTrue(res["ok"])
+        c = res["contact"]
+        self.assertEqual(c["sitio_web"], "https://www.osgroyco.com.mx")
+
 
 if __name__ == "__main__":
     unittest.main()

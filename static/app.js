@@ -1,4 +1,13 @@
 
+function formatWebUrl(raw) {
+  if (!raw) return '';
+  raw = String(raw).trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return 'https://' + raw;
+}
+
+
 function getCompanyLogoUrl(contact) {
   let domain = '';
   if (contact.sitio_web) {
@@ -992,7 +1001,7 @@ function renderDirectorioCards(contacts) {
             ${c.telefono ? `<div class="detail-item"><span>📞</span><strong>${esc(c.telefono)}</strong></div>` : ''}
             ${c.telefono_2 ? `<div class="detail-item"><span>📱</span><span>${esc(c.telefono_2)}</span></div>` : ''}
             ${c.correo ? `<div class="detail-item"><span>✉️</span><a href="mailto:${esc(c.correo)}">${esc(c.correo)}</a></div>` : ''}
-            ${c.sitio_web ? `<div class="detail-item"><span>🌐</span><a href="${esc(c.sitio_web)}" target="_blank" rel="noopener">${esc(c.sitio_web.replace(/^https?:\/\//, ''))}</a></div>` : ''}
+            ${c.sitio_web ? `<div class="detail-item"><span>🌐</span><a href="${esc(formatWebUrl(c.sitio_web))}" target="_blank" rel="noopener">${esc(c.sitio_web.replace(/^https?:\/\//i, ''))}</a></div>` : ''}
             ${c.direccion ? `<div class="detail-item" title="${esc(c.direccion)}"><span>🏠</span><span>${esc(c.direccion)}</span></div>` : ''}
             ${c.notas ? `<div class="detail-item" style="color:var(--muted); font-style:italic;" title="${esc(c.notas)}"><span>📝</span><span>${esc(c.notas)}</span></div>` : ''}
           </div>
@@ -1917,7 +1926,7 @@ function openViewContactDossier(id) {
   const webBox = $('#view-contact-web');
   if (webBox) {
     webBox.innerHTML = c.sitio_web
-      ? `<a href="${esc(c.sitio_web)}" target="_blank" rel="noopener">${esc(c.sitio_web.replace(/^https?:\/\//, ''))}</a>`
+      ? `<a href="${esc(formatWebUrl(c.sitio_web))}" target="_blank" rel="noopener">${esc(c.sitio_web.replace(/^https?:\/\//i, ''))}</a>`
       : '<span style="color:var(--muted);">No registrado</span>';
   }
 
