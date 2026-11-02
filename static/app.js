@@ -1,3 +1,25 @@
+
+function getCompanyLogoUrl(contact) {
+  let domain = '';
+  if (contact.sitio_web) {
+    domain = contact.sitio_web.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split(':')[0].trim();
+  }
+  if (!domain && contact.correo) {
+    const parts = contact.correo.split('@');
+    if (parts.length > 1) {
+      const emailDomain = parts[1].toLowerCase().trim();
+      const generic = ['gmail.com', 'hotmail.com', 'yahoo.com', 'outlook.com', 'icloud.com', 'live.com', 'aol.com', 'prodigy.net.mx'];
+      if (!generic.includes(emailDomain)) {
+        domain = emailDomain;
+      }
+    }
+  }
+  if (domain && domain.includes('.')) {
+    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`;
+  }
+  return '';
+}
+
 const state={me:null,system:null,view:'management',quote:null,language:'en',importToken:null,bootstrap:false,users:[],calendar:null};
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const esc=(v='')=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -840,6 +862,41 @@ async function renderDirectorio() {
       dlUbi.innerHTML = state.directorio.catalogs.ubicaciones.map(u => `<option value="${esc(u.estado)}, ${esc(u.pais)}">`).join('');
     }
 
+    // Poblar selector dependiente de ubicaciones nacionales
+    const ubiNacSelect = $('#directorio-filter-ubicacion-nacional');
+    if (ubiNacSelect) {
+      const currentNac = state.directorio.ubicacionNacional || '';
+      const nacStates = new Set();
+      (state.directorio.catalogs?.ubicaciones || [])
+        .filter(u => u.tipo === 'Nacional' && u.estado)
+        .forEach(u => nacStates.add(u.estado.trim()));
+      (state.directorio.contacts || [])
+        .filter(c => (c.ubicacion_tipo || 'Nacional') === 'Nacional')
+        .forEach(c => {
+          const raw = (c.ubicacion_display || c.ubicacion_texto || '').trim();
+          if (raw) {
+            const parts = raw.split(',').map(p => p.trim()).filter(Boolean);
+            if (parts.length > 0) {
+              const stateCandidate = (parts.length >= 2 && parts[parts.length - 1].toLowerCase().includes('m'))
+                ? parts[parts.length - 2]
+                : parts[0];
+              if (stateCandidate) nacStates.add(stateCandidate);
+            }
+          }
+        });
+
+      const sortedStates = Array.from(nacStates).sort((a, b) => a.localeCompare(b, 'es'));
+      ubiNacSelect.innerHTML = `<option value="">📍 Todos los Estados / Ciudades (Nacional)</option>` +
+        sortedStates.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+      ubiNacSelect.value = currentNac;
+
+      if (state.directorio.ubicacion === 'Nacional') {
+        ubiNacSelect.classList.remove('hidden');
+      } else {
+        ubiNacSelect.classList.add('hidden');
+      }
+    }
+
     filterAndDisplayDirectorio();
   } catch (err) {
     toast('Error al cargar directorio: ' + err.message, true);
@@ -858,11 +915,17 @@ function filterAndDisplayDirectorio() {
   const filterEmp = state.directorio.empresa;
   const filterUbi = state.directorio.ubicacion;
 
+  const filterUbiNac = state.directorio.ubicacionNacional;
+
   const filtered = state.directorio.contacts.filter(c => {
     if (filterEmp && (c.empresa_display !== filterEmp && c.empresa_nombre !== filterEmp)) return false;
-        if (filterUbi && filterUbi !== 'Todos') {
+    if (filterUbi && filterUbi !== 'Todos') {
       const uType = c.ubicacion_tipo || 'Nacional';
       if (uType !== filterUbi) return false;
+    }
+    if (filterUbi === 'Nacional' && filterUbiNac) {
+      const uBlob = `${c.ubicacion_display || ''} ${c.ubicacion_texto || ''} ${c.direccion || ''}`.toLowerCase();
+      if (!uBlob.includes(filterUbiNac.toLowerCase())) return false;
     }
     if (query) {
       const blob = `${c.nombre_completo || ''} ${c.puesto || ''} ${c.correo || ''} ${c.telefono || ''} ${c.telefono_2 || ''} ${c.empresa_display || ''} ${c.ubicacion_display || ''}`.toLowerCase();
@@ -900,6 +963,7 @@ function renderDirectorioCards(contacts) {
 
   container.innerHTML = contacts.map(c => {
     const initials = (c.nombre_completo || 'C').split(' ').filter(Boolean).slice(0, 2).map(n => n[0]).join('').toUpperCase();
+    const logoUrl = getCompanyLogoUrl(c);
     const waNumber = cleanPhoneForWa(c.telefono || c.telefono_2);
     const telClean = (c.telefono || c.telefono_2 || '').replace(/[^0-9+]/g, '');
 
@@ -907,9 +971,15 @@ function renderDirectorioCards(contacts) {
       <div class="contact-card" data-id="${c.id_contacto}">
         <div>
           <div class="contact-card-top">
-            <div class="contact-avatar">${esc(initials)}</div>
+            <div class="contact-avatar ${logoUrl ? '' : 'avatar-text'}">
+              ${logoUrl ? `<img src="${logoUrl}" alt="Logo" class="contact-logo-img" loading="lazy" onerror="this.parentElement.classList.add('avatar-text'); this.parentElement.innerHTML='${esc(initials)}';">` : esc(initials)}
+            </div>
             <div class="contact-main-info">
-              <h3 class="contact-name" title="${esc(c.nombre_completo)}">${esc(c.nombre_completo)}</h3>
+              <h3 class="contact-name" title="Ver ficha de ${esc(c.nombre_completo)}">
+                <button type="button" class="btn-name-link view-contact-dossier" data-id="${c.id_contacto}">
+                  ${esc(c.nombre_completo)}
+                </button>
+              </h3>
               <p class="contact-puesto">${esc(c.puesto || 'Puesto no asignado')}</p>
               <div class="contact-badges">
                 ${c.empresa_display ? `<span class="badge-empresa">🏢 ${esc(c.empresa_display)}</span>` : ''}
@@ -974,7 +1044,7 @@ function renderDirectorioTable(contacts) {
           return `
             <tr>
               <td>
-                <strong>${esc(c.nombre_completo)}</strong>
+                <strong><button type="button" class="btn-name-link view-contact-dossier" data-id="${c.id_contacto}" title="Ver ficha">${esc(c.nombre_completo)}</button></strong>
                 ${c.puesto ? `<div class="section-help" style="margin:0;">${esc(c.puesto)}</div>` : ''}
               </td>
               <td>${esc(c.empresa_display || '-')}</td>
@@ -1047,6 +1117,10 @@ function wireDirectorioEvents() {
       openCardPhotoViewer(title, front, back);
     };
   });
+
+  $$('.view-contact-dossier').forEach(b => {
+    b.onclick = () => openViewContactDossier(Number(b.dataset.id));
+  });
 }
 
 function openEditContact(id) {
@@ -1110,9 +1184,27 @@ if (dirFilterEmp) {
 }
 
 const dirFilterUbi = $('#directorio-filter-ubicacion');
+const dirFilterUbiNac = $('#directorio-filter-ubicacion-nacional');
+
 if (dirFilterUbi) {
   dirFilterUbi.addEventListener('change', () => {
     state.directorio.ubicacion = dirFilterUbi.value;
+    if (dirFilterUbi.value === 'Nacional') {
+      if (dirFilterUbiNac) dirFilterUbiNac.classList.remove('hidden');
+    } else {
+      if (dirFilterUbiNac) {
+        dirFilterUbiNac.classList.add('hidden');
+        dirFilterUbiNac.value = '';
+      }
+      state.directorio.ubicacionNacional = '';
+    }
+    filterAndDisplayDirectorio();
+  });
+}
+
+if (dirFilterUbiNac) {
+  dirFilterUbiNac.addEventListener('change', () => {
+    state.directorio.ubicacionNacional = dirFilterUbiNac.value;
     filterAndDisplayDirectorio();
   });
 }
@@ -1755,4 +1847,136 @@ if (btnUnifyCats) {
       btnUnifyCats.textContent = '🔄 Unificar y Normalizar Catálogos Ahora';
     }
   });
+}
+
+function openViewContactDossier(id) {
+  const c = state.directorio.contacts.find(x => x.id_contacto === id);
+  if (!c) return;
+
+  const dialog = $('#dialog-contacto-vista');
+  if (!dialog) return;
+
+  const headerTitle = $('#view-contact-header-title');
+  if (headerTitle) headerTitle.textContent = `Ficha: ${c.nombre_completo || 'Contacto'}`;
+
+  const fullNameEl = $('#view-contact-fullname');
+  if (fullNameEl) fullNameEl.textContent = c.nombre_completo || 'Sin nombre';
+
+  const puestoEl = $('#view-contact-puesto');
+  if (puestoEl) puestoEl.textContent = c.puesto || 'Puesto no asignado';
+
+  // Logo / Avatar
+  const logoUrl = getCompanyLogoUrl(c);
+  const initials = (c.nombre_completo || 'C').split(' ').filter(Boolean).slice(0, 2).map(n => n[0]).join('').toUpperCase();
+  const avatarWrap = $('#view-contact-avatar-wrap');
+  if (avatarWrap) {
+    avatarWrap.innerHTML = logoUrl
+      ? `<div class="contact-avatar has-logo" style="width:58px; height:58px; border-radius:14px;">
+           <img src="${logoUrl}" alt="Logo" class="contact-logo-img" onerror="this.parentElement.classList.add('avatar-text'); this.parentElement.innerHTML='${esc(initials)}';">
+         </div>`
+      : `<div class="contact-avatar avatar-text" style="width:58px; height:58px; border-radius:14px; font-size:18px;">${esc(initials)}</div>`;
+  }
+
+  // Badges
+  const badgesWrap = $('#view-contact-badges');
+  if (badgesWrap) {
+    badgesWrap.innerHTML = `
+      ${c.empresa_display ? `<span class="badge-empresa">🏢 ${esc(c.empresa_display)}</span>` : ''}
+      ${c.ubicacion_tipo ? `<span class="badge-ubi ${c.ubicacion_tipo.toLowerCase()}">${c.ubicacion_tipo === "Nacional" ? "🇲🇽 Nacional" : "🌐 Internacional"}</span>` : ''}
+      ${c.ubicacion_display ? `<span class="badge-ubi">📍 ${esc(c.ubicacion_display)}</span>` : ''}
+    `;
+  }
+
+  // Teléfonos
+  const waNumber = cleanPhoneForWa(c.telefono || c.telefono_2);
+  const telClean = (c.telefono || c.telefono_2 || '').replace(/[^0-9+]/g, '');
+  const tel1Box = $('#view-contact-tel1');
+  if (tel1Box) {
+    tel1Box.innerHTML = c.telefono
+      ? `<a href="tel:${telClean}" style="color:var(--text); font-weight:700;">${esc(c.telefono)}</a>
+         ${waNumber ? `<a href="https://wa.me/${waNumber}" target="_blank" rel="noopener" class="button ghost" style="padding:2px 8px; font-size:11px; margin-left:6px;">💬 WhatsApp</a>` : ''}`
+      : '<span style="color:var(--muted); font-weight:normal;">No registrado</span>';
+  }
+
+  const tel2Box = $('#view-contact-tel2');
+  if (tel2Box) {
+    tel2Box.innerHTML = c.telefono_2
+      ? `<a href="tel:${(c.telefono_2 || '').replace(/[^0-9+]/g, '')}" style="color:var(--text);">${esc(c.telefono_2)}</a>`
+      : '<span style="color:var(--muted);">No registrado</span>';
+  }
+
+  // Correo
+  const correoBox = $('#view-contact-correo');
+  if (correoBox) {
+    correoBox.innerHTML = c.correo
+      ? `<a href="mailto:${esc(c.correo)}">${esc(c.correo)}</a>`
+      : '<span style="color:var(--muted);">No registrado</span>';
+  }
+
+  // Web
+  const webBox = $('#view-contact-web');
+  if (webBox) {
+    webBox.innerHTML = c.sitio_web
+      ? `<a href="${esc(c.sitio_web)}" target="_blank" rel="noopener">${esc(c.sitio_web.replace(/^https?:\/\//, ''))}</a>`
+      : '<span style="color:var(--muted);">No registrado</span>';
+  }
+
+  // Dirección y Ubicación
+  const dirBox = $('#view-contact-direccion');
+  if (dirBox) {
+    const fullDir = [c.direccion, c.ubicacion_display || c.ubicacion_texto].filter(Boolean).join(' • ');
+    dirBox.textContent = fullDir || 'No registrada';
+  }
+
+  // Notas
+  const notasWrap = $('#view-contact-notas-wrap');
+  const notasBox = $('#view-contact-notas');
+  if (c.notas && c.notas.trim()) {
+    if (notasWrap) notasWrap.classList.remove('hidden');
+    if (notasBox) notasBox.textContent = c.notas;
+  } else {
+    if (notasWrap) notasWrap.classList.add('hidden');
+  }
+
+  // Fotos de la tarjeta
+  const photosSec = $('#view-contact-photos-section');
+  const photosGrid = $('#view-contact-photos-grid');
+  if (c.foto_tarjeta || c.foto_tarjeta_reverso) {
+    if (photosSec) photosSec.classList.remove('hidden');
+    if (photosGrid) {
+      photosGrid.innerHTML = `
+        ${c.foto_tarjeta ? `
+          <div class="dossier-photo-thumb" style="text-align:center; cursor:pointer;" onclick="openCardPhotoViewer('${esc(c.nombre_completo)}', '${esc(c.foto_tarjeta)}', '${esc(c.foto_tarjeta_reverso || '')}')" title="Clic para ampliar foto frontal">
+            <span style="font-size:11px; font-weight:700; color:var(--muted); display:block; margin-bottom:4px;">🖼️ Frente</span>
+            <img src="${c.foto_tarjeta}" alt="Frente" style="max-width:100%; max-height:140px; border-radius:6px; box-shadow:0 2px 6px rgba(0,0,0,0.15);">
+          </div>
+        ` : ''}
+        ${c.foto_tarjeta_reverso ? `
+          <div class="dossier-photo-thumb" style="text-align:center; cursor:pointer;" onclick="openCardPhotoViewer('${esc(c.nombre_completo)}', '${esc(c.foto_tarjeta || '')}', '${esc(c.foto_tarjeta_reverso)}')" title="Clic para ampliar foto trasera">
+            <span style="font-size:11px; font-weight:700; color:var(--muted); display:block; margin-bottom:4px;">🔄 Reverso</span>
+            <img src="${c.foto_tarjeta_reverso}" alt="Reverso" style="max-width:100%; max-height:140px; border-radius:6px; box-shadow:0 2px 6px rgba(0,0,0,0.15);">
+          </div>
+        ` : ''}
+      `;
+    }
+  } else {
+    if (photosSec) photosSec.classList.add('hidden');
+  }
+
+  // Conectar botón para editar
+  const btnEdit = $('#btn-view-to-edit');
+  if (btnEdit) {
+    btnEdit.onclick = () => {
+      dialog.close();
+      openEditContact(c.id_contacto);
+    };
+  }
+
+  // Conectar botón vCard
+  const vcardLink = $('#btn-view-vcard');
+  if (vcardLink) {
+    vcardLink.href = `/api/directorio/vcard/${c.id_contacto}`;
+  }
+
+  dialog.showModal();
 }
