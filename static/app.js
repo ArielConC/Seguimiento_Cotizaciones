@@ -896,7 +896,7 @@ function renderDirectorioCards(contacts) {
     return;
   }
 
-  const isAdmin = state.me?.role === 'admin';
+  const isAdmin = state.me?.role !== 'readonly';
 
   container.innerHTML = contacts.map(c => {
     const initials = (c.nombre_completo || 'C').split(' ').filter(Boolean).slice(0, 2).map(n => n[0]).join('').toUpperCase();
@@ -953,7 +953,7 @@ function renderDirectorioTable(contacts) {
     return;
   }
 
-  const isAdmin = state.me?.role === 'admin';
+  const isAdmin = state.me?.role !== 'readonly';
 
   container.innerHTML = `
     <table class="data-table">
@@ -1055,6 +1055,7 @@ function openEditContact(id) {
 
   $('#contact-id').value = c.id_contacto;
   $('#contact-dialog-title').textContent = 'Editar Contacto';
+  $('#btn-delete-contact-from-modal')?.classList.remove('hidden');
   state.directorio.currentCardPhotoToSave = c.foto_tarjeta || '';
   state.directorio.currentBackCardPhotoToSave = c.foto_tarjeta_reverso || '';
   $('#contact-nombre').value = c.nombre_completo || '';
@@ -1140,6 +1141,7 @@ if (btnNewContact) {
   btnNewContact.addEventListener('click', () => {
     $('#contact-id').value = '';
     $('#contact-dialog-title').textContent = 'Nuevo Contacto';
+    $('#btn-delete-contact-from-modal')?.classList.add('hidden');
     state.directorio.currentCardPhotoToSave = '';
     state.directorio.currentBackCardPhotoToSave = '';
     $('#form-contacto').reset();
@@ -1568,6 +1570,7 @@ if (btnStartScan) {
       // Abrir modal de contacto con los datos extraídos y fotos vinculadas
       $('#contact-id').value = '';
       $('#contact-dialog-title').textContent = extracted.nombre_completo ? 'Confirmar Contacto Escaneado' : 'Nuevo Contacto';
+      $('#btn-delete-contact-from-modal')?.classList.add('hidden');
       $('#contact-nombre').value = extracted.nombre_completo || '';
       $('#contact-puesto').value = extracted.puesto || '';
       $('#contact-empresa-nombre').value = extracted.empresa || '';
@@ -1721,3 +1724,14 @@ if (btnSwitchToBatch) {
     }
   });
 }
+
+const btnDeleteFromModal = $('#btn-delete-contact-from-modal');
+if (btnDeleteFromModal) {
+  btnDeleteFromModal.addEventListener('click', async () => {
+    const id = Number($('#contact-id').value);
+    if (!id) return;
+    $('#dialog-contacto').close();
+    await confirmDeleteContact(id);
+  });
+}
+

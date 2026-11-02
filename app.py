@@ -271,7 +271,7 @@ class Handler(BaseHTTPRequestHandler):
                 res = directorio.save_ubicacion(str(payload.get("tipo", "Nacional")), str(payload.get("pais", "")), str(payload.get("estado", "")))
                 self._json(res, HTTPStatus.CREATED)
             elif re.fullmatch(r"/api/directorio/contactos/\d+/delete", parsed.path):
-                if not auth.can_admin(user): raise PermissionError("Administrator permission required")
+                if user.get("role") == "readonly": raise PermissionError("Permission denied for read-only user")
                 cid = int(parsed.path.split("/")[4])
                 res = directorio.delete_contact(cid)
                 auth.audit(user, "directorio_contact_deleted", detail=str(cid), ip=self._client_ip())
@@ -287,7 +287,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             user=self._user(); self._csrf(user)
             if re.fullmatch(r"/api/directorio/contactos/\d+", parsed.path):
-                if not auth.can_admin(user): raise PermissionError("Administrator permission required")
+                if user.get("role") == "readonly": raise PermissionError("Permission denied for read-only user")
                 cid = int(parsed.path.rsplit("/", 1)[1])
                 res = directorio.delete_contact(cid)
                 auth.audit(user, "directorio_contact_deleted", detail=str(cid), ip=self._client_ip())

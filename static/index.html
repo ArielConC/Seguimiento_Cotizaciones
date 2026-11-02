@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Quotation Follow-up | NT Tool</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261102.7">
+  <link rel="stylesheet" href="/static/styles.css?v=20261102.8">
 </head>
 <body>
   <div id="app" class="app-shell hidden">
@@ -213,7 +213,7 @@
     </div>
   </form>
 </dialog>
-  <script src="/static/app.js?v=20261102.7" defer></script>
+  <script src="/static/app.js?v=20261102.8" defer></script>
   <!-- DIALOG: ESCANEO DE TARJETAS CON IA -->
   <dialog id="dialog-scan-card" class="wide-dialog">
     <div class="dialog-content">
@@ -381,9 +381,14 @@
         </label>
       </div>
 
-      <div class="dialog-actions-row">
-        <button type="submit" class="button primary">💾 Guardar Contacto</button>
-        <button type="button" class="button ghost dialog-close">Cancelar</button>
+      <div class="dialog-actions-row" style="display:flex; justify-content:space-between; align-items:center;">
+        <button type="button" id="btn-delete-contact-from-modal" class="button ghost danger-btn hidden" style="color:#dc2626; border-color:#fca5a5;">
+          🗑️ Eliminar Contacto
+        </button>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="button ghost dialog-close">Cancelar</button>
+          <button type="submit" class="button primary">💾 Guardar Contacto</button>
+        </div>
       </div>
     </form>
   </dialog>
