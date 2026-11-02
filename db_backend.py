@@ -12,6 +12,9 @@ IDENTITY_TABLES = {
     "audit_log",
     "backup_runs",
     "daily_notes",
+    "directorio_contactos",
+    "directorio_empresas",
+    "directorio_ubicaciones",
     "imports",
     "po_invoices",
     "quote_comments",
@@ -26,6 +29,12 @@ IDENTITY_TABLES = {
     "special_quote_invoices",
     "special_quotes",
     "users",
+}
+
+IDENTITY_TABLE_COLUMNS = {
+    "directorio_contactos": "id_contacto",
+    "directorio_empresas": "id_empresa",
+    "directorio_ubicaciones": "id_ubicacion",
 }
 
 
@@ -283,7 +292,8 @@ class PostgresCursor:
             return self
         table = _identity_insert_table(translated)
         if table and "RETURNING" not in translated.upper():
-            translated = translated.rstrip().removesuffix(";").rstrip() + " RETURNING id"
+            pk_col = IDENTITY_TABLE_COLUMNS.get(table, "id")
+            translated = translated.rstrip().removesuffix(";").rstrip() + f" RETURNING {pk_col}"
         self._cursor.execute(translated, tuple(parameters or ()))
         if table and self._cursor.description:
             rows = self._cursor.fetchall()

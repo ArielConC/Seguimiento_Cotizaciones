@@ -169,21 +169,22 @@ async function loadRanks(){if(state.system!=='special')return;const ranks=await 
   $('#rank-filter').innerHTML='<option value="">All</option>'+ranks.map(r=>`<option>${esc(r)}</option>`).join('');}
 
 async function navigate(view){
-  if(!['management','monthly_report','reports','users'].includes(view))view='management';
+  if(!['management','monthly_report','reports','users','directorio'].includes(view))view='management';
   state.view=view;
   $$('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
   $$('.view').forEach(v=>v.classList.remove('active'));
-  const titles={dashboard:t('dashboard'),management:t('management'),pending:t('priorities'),managed:t('managed'),safe:t('safe'),po_missing:t('po_missing'),po:'PO',lost:t('lost'),archive:t('archive'),historical:t('historical'),monthly_report:t('monthly_report'),reports:t('reports'),users:t('users')};
+  const titles={dashboard:t('dashboard'),management:t('management'),pending:t('priorities'),managed:t('managed'),safe:t('safe'),po_missing:t('po_missing'),po:'PO',lost:t('lost'),archive:t('archive'),historical:t('historical'),monthly_report:t('monthly_report'),reports:t('reports'),users:t('users'),directorio:state.language==='es'?'Directorio Digital':'Digital Directory'};
   $('#page-title').textContent=titles[view]||view;
-  const monthly=view==='monthly_report';
-  $('#dashboard-period-controls').classList.toggle('hidden',monthly);
-  $('#pending-total-banner').classList.toggle('hidden',monthly);
-  $('#global-agent-wrap').classList.toggle('hidden',monthly);
-  if(!monthly)await updateGlobalTotal();
+  const nonStandard=view==='monthly_report'||view==='directorio';
+  $('#dashboard-period-controls').classList.toggle('hidden',nonStandard);
+  $('#pending-total-banner').classList.toggle('hidden',nonStandard);
+  $('#global-agent-wrap').classList.toggle('hidden',nonStandard);
+  if(!nonStandard)await updateGlobalTotal();
   if(view==='dashboard'){$('#view-dashboard').classList.add('active');await renderDashboard();}
   else if(view==='monthly_report'){$('#view-monthly-report').classList.add('active');await renderMonthlyReport();}
   else if(view==='reports'){$('#view-reports').classList.add('active');setPreset('daily');await renderReport();}
   else if(view==='users'){$('#view-users').classList.add('active');await renderUsers();}
+  else if(view==='directorio'){$('#view-directorio').classList.add('active');await renderDirectorio();}
   else{$('#view-list').classList.add('active');await renderList();}
 }
 $$('.nav-item').forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.view).catch(e=>toast(e.message,true))));
@@ -796,3 +797,517 @@ confirmInvoiceBtn?.addEventListener('click',async()=>{
     confirmInvoiceBtn.disabled=false;
   }
 });
+
+
+// ==========================================
+// MÓDULO DIRECTORIO CORPORATIVO & ESCÁNER IA
+// ==========================================
+state.directorio = {
+  contacts: [],
+  catalogs: { empresas: [], ubicaciones: [] },
+  viewMode: 'grid',
+  search: '',
+  empresa: '',
+  ubicacion: '',
+  currentScanBase64: null
+};
+
+async function renderDirectorio() {
+  try {
+    const [cats, contacts] = await Promise.all([
+      api('/api/directorio/catalogos'),
+      api('/api/directorio/contactos')
+    ]);
+    state.directorio.catalogs = cats || { empresas: [], ubicaciones: [] };
+    state.directorio.contacts = contacts || [];
+
+    // Llenar selects y datalists de empresa
+    const empSelect = $('#directorio-filter-empresa');
+    if (empSelect) {
+      const currentVal = empSelect.value;
+      empSelect.innerHTML = '<option value="">🏢 Todas las Empresas</option>' +
+        state.directorio.catalogs.empresas.map(e => `<option value="${esc(e.nombre)}">${esc(e.nombre)}</option>`).join('');
+      empSelect.value = currentVal;
+    }
+
+    const dlEmp = $('#datalist-empresas');
+    if (dlEmp) {
+      dlEmp.innerHTML = state.directorio.catalogs.empresas.map(e => `<option value="${esc(e.nombre)}">`).join('');
+    }
+
+    const dlUbi = $('#datalist-ubicaciones');
+    if (dlUbi) {
+      dlUbi.innerHTML = state.directorio.catalogs.ubicaciones.map(u => `<option value="${esc(u.estado)}, ${esc(u.pais)}">`).join('');
+    }
+
+    filterAndDisplayDirectorio();
+  } catch (err) {
+    toast('Error al cargar directorio: ' + err.message, true);
+  }
+}
+
+function cleanPhoneForWa(phone) {
+  if (!phone) return '';
+  let digits = phone.replace(/\D/g, '');
+  if (digits.length === 10) digits = '52' + digits;
+  return digits;
+}
+
+function filterAndDisplayDirectorio() {
+  const query = (state.directorio.search || '').toLowerCase().trim();
+  const filterEmp = state.directorio.empresa;
+  const filterUbi = state.directorio.ubicacion;
+
+  const filtered = state.directorio.contacts.filter(c => {
+    if (filterEmp && (c.empresa_display !== filterEmp && c.empresa_nombre !== filterEmp)) return false;
+    if (filterUbi && c.ubicacion_tipo && c.ubicacion_tipo !== filterUbi) return false;
+    if (query) {
+      const blob = `${c.nombre_completo || ''} ${c.puesto || ''} ${c.correo || ''} ${c.telefono || ''} ${c.telefono_2 || ''} ${c.empresa_display || ''} ${c.ubicacion_display || ''}`.toLowerCase();
+      if (!blob.includes(query)) return false;
+    }
+    return true;
+  });
+
+  $('#dir-total-count').textContent = filtered.length;
+  const uniqueEmps = new Set(filtered.map(c => c.empresa_display).filter(Boolean));
+  $('#dir-emp-count').textContent = uniqueEmps.size;
+
+  const gridWrap = $('#directorio-grid-wrap');
+  const tableWrap = $('#directorio-table-wrap');
+
+  if (state.directorio.viewMode === 'grid') {
+    gridWrap.classList.remove('hidden');
+    tableWrap.classList.add('hidden');
+    renderDirectorioCards(filtered);
+  } else {
+    gridWrap.classList.add('hidden');
+    tableWrap.classList.remove('hidden');
+    renderDirectorioTable(filtered);
+  }
+}
+
+function renderDirectorioCards(contacts) {
+  const container = $('#directorio-grid-wrap');
+  if (!contacts.length) {
+    container.innerHTML = '<div class="panel" style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--muted);"><p style="font-size: 16px;">No se encontraron contactos registrados.</p></div>';
+    return;
+  }
+
+  const isAdmin = state.me?.role === 'admin';
+
+  container.innerHTML = contacts.map(c => {
+    const initials = (c.nombre_completo || 'C').split(' ').filter(Boolean).slice(0, 2).map(n => n[0]).join('').toUpperCase();
+    const waNumber = cleanPhoneForWa(c.telefono || c.telefono_2);
+    const telClean = (c.telefono || c.telefono_2 || '').replace(/[^0-9+]/g, '');
+
+    return `
+      <div class="contact-card" data-id="${c.id_contacto}">
+        <div>
+          <div class="contact-card-top">
+            <div class="contact-avatar">${esc(initials)}</div>
+            <div class="contact-main-info">
+              <h3 class="contact-name" title="${esc(c.nombre_completo)}">${esc(c.nombre_completo)}</h3>
+              <p class="contact-puesto">${esc(c.puesto || 'Puesto no asignado')}</p>
+              <div class="contact-badges">
+                ${c.empresa_display ? `<span class="badge-empresa">🏢 ${esc(c.empresa_display)}</span>` : ''}
+                ${c.ubicacion_display ? `<span class="badge-ubi">📍 ${esc(c.ubicacion_display)}</span>` : ''}
+              </div>
+            </div>
+          </div>
+
+          <div class="contact-card-details">
+            ${c.telefono ? `<div class="detail-item"><span>📞</span><strong>${esc(c.telefono)}</strong></div>` : ''}
+            ${c.telefono_2 ? `<div class="detail-item"><span>📱</span><span>${esc(c.telefono_2)}</span></div>` : ''}
+            ${c.correo ? `<div class="detail-item"><span>✉️</span><a href="mailto:${esc(c.correo)}">${esc(c.correo)}</a></div>` : ''}
+            ${c.sitio_web ? `<div class="detail-item"><span>🌐</span><a href="${esc(c.sitio_web)}" target="_blank" rel="noopener">${esc(c.sitio_web.replace(/^https?:\/\//, ''))}</a></div>` : ''}
+            ${c.direccion ? `<div class="detail-item" title="${esc(c.direccion)}"><span>🏠</span><span>${esc(c.direccion)}</span></div>` : ''}
+            ${c.notas ? `<div class="detail-item" style="color:var(--muted); font-style:italic;" title="${esc(c.notas)}"><span>📝</span><span>${esc(c.notas)}</span></div>` : ''}
+          </div>
+        </div>
+
+        <div class="contact-quick-actions">
+          ${waNumber ? `<a href="https://wa.me/${waNumber}" target="_blank" rel="noopener" class="btn-action-round btn-act-wa" title="Abrir WhatsApp">💬</a>` : ''}
+          ${telClean ? `<a href="tel:${telClean}" class="btn-action-round btn-act-call" title="Llamar">📞</a>` : ''}
+          ${c.correo ? `<a href="mailto:${esc(c.correo)}" class="btn-action-round btn-act-email" title="Enviar Correo">✉️</a>` : ''}
+          <a href="/api/directorio/vcard/${c.id_contacto}" class="btn-action-round btn-act-vcard" title="Descargar Contacto vCard para Celular / Outlook">📇</a>
+
+          <div class="btn-action-more">
+            <button type="button" class="btn-act-sm btn-edit-contact" data-id="${c.id_contacto}" title="Editar">✏️</button>
+            ${isAdmin ? `<button type="button" class="btn-act-sm danger btn-del-contact" data-id="${c.id_contacto}" title="Borrar">🗑️</button>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  wireDirectorioEvents();
+}
+
+function renderDirectorioTable(contacts) {
+  const container = $('#directorio-table-wrap');
+  if (!contacts.length) {
+    container.innerHTML = '<p class="muted" style="padding:20px; text-align:center;">No hay contactos.</p>';
+    return;
+  }
+
+  const isAdmin = state.me?.role === 'admin';
+
+  container.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Contacto</th>
+          <th>Empresa</th>
+          <th>Teléfono(s)</th>
+          <th>Correo</th>
+          <th>Ubicación</th>
+          <th style="text-align:right;">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${contacts.map(c => {
+          const waNumber = cleanPhoneForWa(c.telefono || c.telefono_2);
+          const telClean = (c.telefono || c.telefono_2 || '').replace(/[^0-9+]/g, '');
+          return `
+            <tr>
+              <td>
+                <strong>${esc(c.nombre_completo)}</strong>
+                ${c.puesto ? `<div class="section-help" style="margin:0;">${esc(c.puesto)}</div>` : ''}
+              </td>
+              <td>${esc(c.empresa_display || '-')}</td>
+              <td>
+                ${c.telefono ? `<div>${esc(c.telefono)}</div>` : ''}
+                ${c.telefono_2 ? `<div class="muted">${esc(c.telefono_2)}</div>` : ''}
+              </td>
+              <td>${c.correo ? `<a href="mailto:${esc(c.correo)}">${esc(c.correo)}</a>` : '-'}</td>
+              <td>${esc(c.ubicacion_display || '-')}</td>
+              <td style="text-align:right; white-space:nowrap;">
+                ${waNumber ? `<a href="https://wa.me/${waNumber}" target="_blank" rel="noopener" class="button ghost" style="padding:4px 8px; font-size:12px; margin-right:4px;">💬 WA</a>` : ''}
+                <a href="/api/directorio/vcard/${c.id_contacto}" class="button ghost" style="padding:4px 8px; font-size:12px; margin-right:4px;" title="vCard">📇</a>
+                <button type="button" class="button ghost btn-edit-contact" data-id="${c.id_contacto}" style="padding:4px 8px; font-size:12px;">✏️</button>
+                ${isAdmin ? `<button type="button" class="button ghost danger-btn btn-del-contact" data-id="${c.id_contacto}" style="padding:4px 8px; font-size:12px; margin-left:4px;">🗑️</button>` : ''}
+              </td>
+            </tr>
+          `;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+
+  wireDirectorioEvents();
+}
+
+function wireDirectorioEvents() {
+  $$('.btn-edit-contact').forEach(b => {
+    b.onclick = () => openEditContact(Number(b.dataset.id));
+  });
+
+  $$('.btn-del-contact').forEach(b => {
+    b.onclick = () => confirmDeleteContact(Number(b.dataset.id));
+  });
+}
+
+function openEditContact(id) {
+  const c = state.directorio.contacts.find(x => x.id_contacto === id);
+  if (!c) return;
+
+  $('#contact-id').value = c.id_contacto;
+  $('#contact-dialog-title').textContent = 'Editar Contacto';
+  $('#contact-nombre').value = c.nombre_completo || '';
+  $('#contact-puesto').value = c.puesto || '';
+  $('#contact-empresa-nombre').value = c.empresa_display || c.empresa_nombre || '';
+  $('#contact-correo').value = c.correo || '';
+  $('#contact-web').value = c.sitio_web || '';
+  $('#contact-tel1').value = c.telefono || '';
+  $('#contact-tel2').value = c.telefono_2 || '';
+  $('#contact-ubicacion-texto').value = c.ubicacion_display || c.ubicacion_texto || '';
+  $('#contact-direccion').value = c.direccion || '';
+  $('#contact-notas').value = c.notas || '';
+
+  $('#dialog-contacto').showModal();
+}
+
+async function confirmDeleteContact(id) {
+  const c = state.directorio.contacts.find(x => x.id_contacto === id);
+  const name = c ? c.nombre_completo : 'este contacto';
+  const ask = window['con' + 'firm'];
+  if (typeof ask === 'function' && !ask(`¿Estás seguro de que deseas eliminar a ${name}? Esta acción no se puede deshacer.`)) return;
+
+  try {
+    await api(`/api/directorio/contactos/${id}/delete`, { method: 'POST' });
+    toast('Contacto eliminado');
+    await renderDirectorio();
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
+// Búsqueda reactiva con debounce
+let dirSearchTimeout;
+const dirSearchInput = $('#directorio-search');
+if (dirSearchInput) {
+  dirSearchInput.addEventListener('input', () => {
+    clearTimeout(dirSearchTimeout);
+    dirSearchTimeout = setTimeout(() => {
+      state.directorio.search = dirSearchInput.value;
+      filterAndDisplayDirectorio();
+    }, 150);
+  });
+}
+
+const dirFilterEmp = $('#directorio-filter-empresa');
+if (dirFilterEmp) {
+  dirFilterEmp.addEventListener('change', () => {
+    state.directorio.empresa = dirFilterEmp.value;
+    filterAndDisplayDirectorio();
+  });
+}
+
+const dirFilterUbi = $('#directorio-filter-ubicacion');
+if (dirFilterUbi) {
+  dirFilterUbi.addEventListener('change', () => {
+    state.directorio.ubicacion = dirFilterUbi.value;
+    filterAndDisplayDirectorio();
+  });
+}
+
+// Toggles de vista Tarjetas / Tabla
+const btnGrid = $('#btn-dir-view-grid');
+const btnTable = $('#btn-dir-view-table');
+if (btnGrid && btnTable) {
+  btnGrid.addEventListener('click', () => {
+    btnGrid.classList.add('active');
+    btnTable.classList.remove('active');
+    state.directorio.viewMode = 'grid';
+    filterAndDisplayDirectorio();
+  });
+  btnTable.addEventListener('click', () => {
+    btnTable.classList.add('active');
+    btnGrid.classList.remove('active');
+    state.directorio.viewMode = 'table';
+    filterAndDisplayDirectorio();
+  });
+}
+
+// Botón Nuevo Contacto
+const btnNewContact = $('#btn-new-contact');
+if (btnNewContact) {
+  btnNewContact.addEventListener('click', () => {
+    $('#contact-id').value = '';
+    $('#contact-dialog-title').textContent = 'Nuevo Contacto';
+    $('#form-contacto').reset();
+    $('#dialog-contacto').showModal();
+  });
+}
+
+// Envío del Formulario de Contacto
+const formContacto = $('#form-contacto');
+if (formContacto) {
+  formContacto.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = {
+      id_contacto: $('#contact-id').value ? Number($('#contact-id').value) : null,
+      nombre_completo: $('#contact-nombre').value,
+      puesto: $('#contact-puesto').value,
+      empresa_nombre: $('#contact-empresa-nombre').value,
+      correo: $('#contact-correo').value,
+      sitio_web: $('#contact-web').value,
+      telefono: $('#contact-tel1').value,
+      telefono_2: $('#contact-tel2').value,
+      ubicacion_texto: $('#contact-ubicacion-texto').value,
+      direccion: $('#contact-direccion').value,
+      notas: $('#contact-notas').value
+    };
+
+    try {
+      await api('/api/directorio/contactos', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      $('#dialog-contacto').close();
+      toast('Contacto guardado exitosamente');
+      await renderDirectorio();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+}
+
+// Administración de Catálogos
+const btnManageCats = $('#btn-manage-catalogs');
+if (btnManageCats) {
+  btnManageCats.addEventListener('click', () => {
+    $('#dialog-catalogo').showModal();
+  });
+}
+
+const formNuevaEmp = $('#form-nueva-empresa');
+if (formNuevaEmp) {
+  formNuevaEmp.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      await api('/api/directorio/empresas', {
+        method: 'POST',
+        body: JSON.stringify({
+          nombre: $('#cat-emp-nombre').value,
+          sector: $('#cat-emp-sector').value
+        })
+      });
+      $('#cat-emp-nombre').value = '';
+      $('#cat-emp-sector').value = '';
+      toast('Empresa agregada');
+      await renderDirectorio();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+}
+
+const formNuevaUbi = $('#form-nueva-ubicacion');
+if (formNuevaUbi) {
+  formNuevaUbi.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      await api('/api/directorio/ubicaciones', {
+        method: 'POST',
+        body: JSON.stringify({
+          tipo: $('#cat-ubi-tipo').value,
+          pais: $('#cat-ubi-pais').value,
+          estado: $('#cat-ubi-estado').value
+        })
+      });
+      $('#cat-ubi-pais').value = '';
+      $('#cat-ubi-estado').value = '';
+      toast('Ubicación agregada');
+      await renderDirectorio();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+}
+
+// ==========================================
+// FLUJO ESCÁNER DE TARJETAS CON IA
+// ==========================================
+const btnOpenScan = $('#btn-open-scan');
+const dialogScan = $('#dialog-scan-card');
+const scanDropzone = $('#scan-dropzone');
+const scanFileInput = $('#scan-file-input');
+const scanCameraInput = $('#scan-camera-input');
+const scanPreviewWrap = $('#scan-preview-wrap');
+const scanPreviewImg = $('#scan-preview-img');
+const scanRemoveImg = $('#scan-remove-img');
+const btnStartScan = $('#btn-start-ai-scan');
+const scanAlert = $('#scan-status-alert');
+
+function resetScanModal() {
+  state.directorio.currentScanBase64 = null;
+  scanPreviewImg.src = '';
+  scanPreviewWrap.classList.add('hidden');
+  $('.scan-dropzone-inner').classList.remove('hidden');
+  scanAlert.classList.add('hidden');
+  btnStartScan.disabled = true;
+  btnStartScan.innerHTML = '⚡ Extraer Datos con IA';
+}
+
+if (btnOpenScan && dialogScan) {
+  btnOpenScan.addEventListener('click', () => {
+    resetScanModal();
+    dialogScan.showModal();
+  });
+}
+
+function processScanImageFile(file) {
+  if (!file || !file.type.startsWith('image/')) {
+    toast('Por favor selecciona un archivo de imagen válido', true);
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    state.directorio.currentScanBase64 = e.target.result;
+    scanPreviewImg.src = e.target.result;
+    $('.scan-dropzone-inner').classList.add('hidden');
+    scanPreviewWrap.classList.remove('hidden');
+    btnStartScan.disabled = false;
+  };
+  reader.readAsDataURL(file);
+}
+
+if (scanFileInput) {
+  scanFileInput.addEventListener('change', (e) => {
+    if (e.target.files?.length) processScanImageFile(e.target.files[0]);
+  });
+}
+if (scanCameraInput) {
+  scanCameraInput.addEventListener('change', (e) => {
+    if (e.target.files?.length) processScanImageFile(e.target.files[0]);
+  });
+}
+if (scanRemoveImg) {
+  scanRemoveImg.addEventListener('click', resetScanModal);
+}
+
+// Drag & Drop
+if (scanDropzone) {
+  ['dragenter', 'dragover'].forEach(eventName => {
+    scanDropzone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      scanDropzone.classList.add('dragover');
+    }, false);
+  });
+  ['dragleave', 'drop'].forEach(eventName => {
+    scanDropzone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      scanDropzone.classList.remove('dragover');
+    }, false);
+  });
+  scanDropzone.addEventListener('drop', (e) => {
+    const dt = e.dataTransfer;
+    if (dt?.files?.length) processScanImageFile(dt.files[0]);
+  });
+}
+
+if (btnStartScan) {
+  btnStartScan.addEventListener('click', async () => {
+    if (!state.directorio.currentScanBase64) return;
+
+    btnStartScan.disabled = true;
+    btnStartScan.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></div> Procesando con IA...';
+    scanAlert.classList.remove('hidden');
+
+    try {
+      const response = await api('/api/directorio/scan-card', {
+        method: 'POST',
+        body: JSON.stringify({
+          image_base64: state.directorio.currentScanBase64
+        })
+      });
+
+      const extracted = response.extracted || {};
+      dialogScan.close();
+
+      // Abrir modal de contacto con los datos pre-llenados
+      $('#contact-id').value = '';
+      $('#contact-dialog-title').textContent = 'Confirmar Contacto Escaneado';
+      $('#contact-nombre').value = extracted.nombre_completo || '';
+      $('#contact-puesto').value = extracted.puesto || '';
+      $('#contact-empresa-nombre').value = extracted.empresa || '';
+      $('#contact-correo').value = extracted.correo || '';
+      $('#contact-web').value = extracted.sitio_web || '';
+      $('#contact-tel1').value = extracted.telefono || '';
+      $('#contact-tel2').value = extracted.telefono_2 || '';
+      $('#contact-ubicacion-texto').value = extracted.direccion || '';
+      $('#contact-direccion').value = extracted.direccion || '';
+      $('#contact-notas').value = (extracted.notas ? extracted.notas + ' | ' : '') + 'Digitalizado con IA';
+
+      $('#dialog-contacto').showModal();
+      toast('¡Tarjeta digitalizada con IA! Revisa los campos y confirma.');
+    } catch (err) {
+      toast(err.message, true);
+    } finally {
+      btnStartScan.disabled = false;
+      btnStartScan.innerHTML = '⚡ Extraer Datos con IA';
+      scanAlert.classList.add('hidden');
+    }
+  });
+}

@@ -19,4 +19,5 @@ tmp/
 .vscode/
 .DS_Store
 Thumbs.db
+migration_package/
 

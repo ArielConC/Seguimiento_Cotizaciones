@@ -14,6 +14,7 @@
         <button class="nav-item active" data-view="management">▦ <span data-i18n="management">Management</span></button>
         <button class="nav-item" data-view="monthly_report">▤ <span data-i18n="monthly_report">Monthly Report</span></button>
         <button class="nav-item" data-view="reports">▥ <span data-i18n="reports">Reports</span></button>
+        <button class="nav-item" data-view="directorio">📇 <span data-i18n="directorio">Directorio</span></button>
         <button class="nav-item admin-only" data-view="users">⚙ <span data-i18n="users">Users</span></button>
       </nav>
       <div id="priority-legend" class="priority-legend"></div>
@@ -109,6 +110,52 @@
         </article>
       </section>
 
+      <!-- ========================================== -->
+      <!-- VISTA DIRECTORIO CORPORATIVO -->
+      <!-- ========================================== -->
+      <section id="view-directorio" class="view">
+        <div class="directorio-header-panel panel">
+          <div class="directorio-toolbar">
+            <div class="directorio-search-wrap">
+              <span class="search-icon">🔍</span>
+              <input id="directorio-search" type="search" placeholder="Buscar por nombre, empresa, puesto, teléfono o correo..." autocomplete="off">
+            </div>
+            <div class="directorio-filters">
+              <select id="directorio-filter-empresa">
+                <option value="">🏢 Todas las Empresas</option>
+              </select>
+              <select id="directorio-filter-ubicacion">
+                <option value="">🌍 Todas las Ubicaciones</option>
+                <option value="Nacional">🇲🇽 Nacional</option>
+                <option value="Internacional">🌐 Internacional</option>
+              </select>
+            </div>
+            <div class="directorio-actions">
+              <div class="view-toggle-group">
+                <button id="btn-dir-view-grid" class="button icon-btn active" type="button" title="Vista de Tarjetas">🗂️</button>
+                <button id="btn-dir-view-table" class="button icon-btn" type="button" title="Vista de Tabla">📋</button>
+              </div>
+              <button id="btn-open-scan" class="button primary btn-scan-ai" type="button">
+                📸 <span>Escanear Tarjeta (IA)</span>
+              </button>
+              <button id="btn-new-contact" class="button primary" type="button">
+                ➕ <span>Nuevo Contacto</span>
+              </button>
+            </div>
+          </div>
+          <div class="directorio-stats-bar">
+            <span>Contactos: <strong id="dir-total-count">0</strong></span>
+            <span class="sep">•</span>
+            <span>Empresas: <strong id="dir-emp-count">0</strong></span>
+            <span class="sep">•</span>
+            <button id="btn-manage-catalogs" class="text-button" type="button" style="font-size:12px;">⚙️ Catálogos de Empresa y Ubicación</button>
+          </div>
+        </div>
+
+        <div id="directorio-grid-wrap" class="directorio-grid"></div>
+        <div id="directorio-table-wrap" class="table-wrap hidden"></div>
+      </section>
+
       <section id="view-users" class="view">
         <div class="dashboard-grid">
           <article class="panel"><div class="panel-heading"><div><p class="eyebrow" data-i18n="user_admin">USER ADMINISTRATION</p><h2 data-i18n="users">Users</h2></div></div><div id="users-table" class="table-wrap"></div></article>
@@ -167,5 +214,159 @@
   </form>
 </dialog>
   <script src="/static/app.js?v=20261102.1" defer></script>
+  <!-- DIALOG: ESCANEO DE TARJETAS CON IA -->
+  <dialog id="dialog-scan-card" class="wide-dialog">
+    <div class="dialog-content">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">DIGITALIZACIÓN INTELIGENTE</p>
+          <h2>📸 Escanear Tarjeta de Presentación con IA</h2>
+        </div>
+        <button type="button" class="icon-button dialog-close">✕</button>
+      </div>
+
+      <div class="scan-card-body">
+        <div id="scan-dropzone" class="scan-dropzone">
+          <div class="scan-dropzone-inner">
+            <span class="scan-icon">📇</span>
+            <h3>Arrastra o toma la foto de la tarjeta aquí</h3>
+            <p>Soporta fotos tomadas directo desde la cámara del celular o archivos JPG, PNG, WEBP</p>
+            <div class="scan-btn-row">
+              <label class="button primary scan-file-label">
+                📁 Seleccionar imagen
+                <input id="scan-file-input" type="file" accept="image/*" class="hidden">
+              </label>
+              <label class="button ghost scan-file-label">
+                📷 Tomar con Cámara
+                <input id="scan-camera-input" type="file" accept="image/*" capture="environment" class="hidden">
+              </label>
+            </div>
+          </div>
+          <div id="scan-preview-wrap" class="scan-preview-wrap hidden">
+            <img id="scan-preview-img" alt="Tarjeta escaneada">
+            <button id="scan-remove-img" type="button" class="button ghost danger-btn">Cambiar Imagen</button>
+          </div>
+        </div>
+
+        <div id="scan-status-alert" class="scan-status-alert hidden">
+          <div class="spinner"></div>
+          <div>
+            <strong>Analizando tarjeta con visión artificial...</strong>
+            <p>Extrayendo nombre, teléfonos, correo, empresa, puesto y dirección con IA de última generación.</p>
+          </div>
+        </div>
+
+        <div class="dialog-actions-row">
+          <button id="btn-start-ai-scan" type="button" class="button primary btn-scan-ai" disabled>
+            ⚡ Extraer Datos con IA
+          </button>
+          <button type="button" class="button ghost dialog-close">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- DIALOG: FORMULARIO CONTACTO (ALTA / EDICIÓN) -->
+  <dialog id="dialog-contacto" class="wide-dialog">
+    <form id="form-contacto" class="dialog-content">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow" id="contact-dialog-eyebrow">DIRECTORIO CORPORATIVO</p>
+          <h2 id="contact-dialog-title">Nuevo Contacto</h2>
+        </div>
+        <button type="button" class="icon-button dialog-close">✕</button>
+      </div>
+
+      <input id="contact-id" type="hidden">
+      <div class="contact-form-grid">
+        <label class="form-full">
+          <span>Nombre Completo *</span>
+          <input id="contact-nombre" required placeholder="Ej. Ing. Carlos Mendoza">
+        </label>
+        <label>
+          <span>Puesto / Cargo</span>
+          <input id="contact-puesto" placeholder="Ej. Gerente de Compras">
+        </label>
+        <label>
+          <span>Empresa</span>
+          <div class="input-with-select">
+            <input id="contact-empresa-nombre" placeholder="Nombre de la empresa" list="datalist-empresas">
+            <datalist id="datalist-empresas"></datalist>
+          </div>
+        </label>
+        <label>
+          <span>Correo Electrónico</span>
+          <input id="contact-correo" type="email" placeholder="contacto@empresa.com">
+        </label>
+        <label>
+          <span>Sitio Web</span>
+          <input id="contact-web" placeholder="https://www.empresa.com">
+        </label>
+        <label>
+          <span>Teléfono Principal (Móvil / WhatsApp)</span>
+          <input id="contact-tel1" placeholder="Ej. +52 477 123 4567">
+        </label>
+        <label>
+          <span>Teléfono Secundario / Oficina</span>
+          <input id="contact-tel2" placeholder="Ej. +52 477 987 6543 ext 102">
+        </label>
+        <label class="form-full">
+          <span>Ubicación / Ciudad / País</span>
+          <input id="contact-ubicacion-texto" placeholder="Ej. León, Guanajuato, México" list="datalist-ubicaciones">
+          <datalist id="datalist-ubicaciones"></datalist>
+        </label>
+        <label class="form-full">
+          <span>Dirección Física</span>
+          <input id="contact-direccion" placeholder="Calle, número, colonia, código postal">
+        </label>
+        <label class="form-full">
+          <span>Notas / Observaciones</span>
+          <textarea id="contact-notas" rows="2" placeholder="Servicios que ofrece, recomendaciones, referencias..."></textarea>
+        </label>
+      </div>
+
+      <div class="dialog-actions-row">
+        <button type="submit" class="button primary">💾 Guardar Contacto</button>
+        <button type="button" class="button ghost dialog-close">Cancelar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- DIALOG: ADMINISTRACIÓN DE CATÁLOGOS -->
+  <dialog id="dialog-catalogo">
+    <div class="dialog-content">
+      <div class="dialog-heading">
+        <h2>⚙️ Catálogos de Empresas y Ubicaciones</h2>
+        <button type="button" class="icon-button dialog-close">✕</button>
+      </div>
+
+      <div class="catalog-sections">
+        <article class="panel">
+          <h3>➕ Nueva Empresa</h3>
+          <form id="form-nueva-empresa" class="form-stack">
+            <label><span>Nombre Corporativo</span><input id="cat-emp-nombre" required placeholder="Ej. Aceros del Bajío"></label>
+            <label><span>Sector / Giro</span><input id="cat-emp-sector" placeholder="Ej. Metalmecánica / Automotriz"></label>
+            <button class="button primary" type="submit">Agregar Empresa</button>
+          </form>
+        </article>
+
+        <article class="panel" style="margin-top:16px;">
+          <h3>➕ Nueva Ubicación</h3>
+          <form id="form-nueva-ubicacion" class="form-stack">
+            <label><span>Tipo</span>
+              <select id="cat-ubi-tipo">
+                <option value="Nacional">Nacional</option>
+                <option value="Internacional">Internacional</option>
+              </select>
+            </label>
+            <label><span>País</span><input id="cat-ubi-pais" required placeholder="Ej. México"></label>
+            <label><span>Estado / Región</span><input id="cat-ubi-estado" required placeholder="Ej. Querétaro"></label>
+            <button class="button primary" type="submit">Agregar Ubicación</button>
+          </form>
+        </article>
+      </div>
+    </div>
+  </dialog>
+
 </body>
 </html>

@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, urlparse
 import auth
 import backup
 import database
+import directorio
 import imports_manager
 import invoice_manager
 import special
@@ -187,6 +188,17 @@ class Handler(BaseHTTPRequestHandler):
                 workspace="special" if "/special/" in parsed.path else "standard"; self._json(self._report(workspace,params,user))
             elif parsed.path in {"/api/monthly-report","/api/special/monthly-report"}:
                 workspace="special" if "/special/" in parsed.path else "standard"; self._json(self._monthly_activity(workspace,params,user))
+            # --- RUTAS DIRECTORIO ---
+            elif parsed.path == "/api/directorio/contactos":
+                self._json(directorio.list_contacts(params.get("search", ""), params.get("empresa", ""), params.get("ubicacion", "")))
+            elif parsed.path == "/api/directorio/catalogos":
+                self._json(directorio.get_catalogs())
+            elif re.fullmatch(r"/api/directorio/contactos/\d+", parsed.path):
+                self._json(directorio.get_contact(int(parsed.path.rsplit("/", 1)[1])))
+            elif re.fullmatch(r"/api/directorio/vcard/\d+", parsed.path):
+                cid = int(parsed.path.rsplit("/", 1)[1])
+                vcf_text, fname = directorio.generate_vcard(cid)
+                self._download(vcf_text.encode("utf-8"), "text/vcard; charset=utf-8", fname)
             elif parsed.path in {"/api/reports/export.pdf","/api/special/reports/export.pdf","/api/reports/export.xlsx","/api/special/reports/export.xlsx"}:
                 workspace="special" if "/special/" in parsed.path else "standard"; data=self._report(workspace,params,user)
                 language=data["language"]; slug=f"{workspace}_follow_up_{data['start_date']}_{data['end_date']}"
@@ -234,9 +246,47 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path=="/api/backup/run":
                 if not auth.can_admin(user): raise PermissionError("Administrator permission required")
                 result=backup.perform(user["display_name"]); auth.audit(user,"backup_run",detail=json.dumps(result),ip=self._client_ip()); self._json(result,HTTPStatus.CREATED if result["ok"] else HTTPStatus.INTERNAL_SERVER_ERROR)
+            # --- RUTAS DIRECTORIO POST ---
+            elif parsed.path == "/api/directorio/contactos":
+                payload = self._read_json()
+                res = directorio.save_contact(payload)
+                auth.audit(user, "directorio_contact_saved", detail=str(res.get("contact", {}).get("nombre_completo", "")), ip=self._client_ip())
+                self._json(res, HTTPStatus.CREATED)
+            elif parsed.path == "/api/directorio/scan-card":
+                payload = self._read_json(25_000_000)
+                res = directorio.scan_card_ai(str(payload.get("image_base64", "")), str(payload.get("mime_type", "image/jpeg")))
+                auth.audit(user, "directorio_card_scanned", ip=self._client_ip())
+                self._json(res)
+            elif parsed.path == "/api/directorio/empresas":
+                payload = self._read_json()
+                res = directorio.save_empresa(str(payload.get("nombre", "")), str(payload.get("sector", "")))
+                self._json(res, HTTPStatus.CREATED)
+            elif parsed.path == "/api/directorio/ubicaciones":
+                payload = self._read_json()
+                res = directorio.save_ubicacion(str(payload.get("tipo", "Nacional")), str(payload.get("pais", "")), str(payload.get("estado", "")))
+                self._json(res, HTTPStatus.CREATED)
+            elif re.fullmatch(r"/api/directorio/contactos/\d+/delete", parsed.path):
+                if not auth.can_admin(user): raise PermissionError("Administrator permission required")
+                cid = int(parsed.path.split("/")[4])
+                res = directorio.delete_contact(cid)
+                auth.audit(user, "directorio_contact_deleted", detail=str(cid), ip=self._client_ip())
+                self._json(res)
             elif re.fullmatch(r"/api/special/archive/\d+/restore",parsed.path):
                 if not auth.can_admin(user): raise PermissionError("Administrator permission required")
                 quote_id=int(parsed.path.split("/")[4]); result=special.restore_quote(quote_id); auth.audit(user,"archive_restored","special","quote",str(quote_id),ip=self._client_ip()); self._json(result)
+            else: self.send_error(HTTPStatus.NOT_FOUND)
+        except Exception as exc: self._handle_error(exc)
+
+    def do_DELETE(self)->None:  # noqa: N802
+        parsed=urlparse(self.path)
+        try:
+            user=self._user(); self._csrf(user)
+            if re.fullmatch(r"/api/directorio/contactos/\d+", parsed.path):
+                if not auth.can_admin(user): raise PermissionError("Administrator permission required")
+                cid = int(parsed.path.rsplit("/", 1)[1])
+                res = directorio.delete_contact(cid)
+                auth.audit(user, "directorio_contact_deleted", detail=str(cid), ip=self._client_ip())
+                self._json(res)
             else: self.send_error(HTTPStatus.NOT_FOUND)
         except Exception as exc: self._handle_error(exc)
 
@@ -286,7 +336,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main()->None:
-    database.initialize(); special.initialize(); auth.initialize(); invoice_manager.initialize(); backup.initialize(); backup.launch_automatic()
+    database.initialize(); special.initialize(); auth.initialize(); invoice_manager.initialize(); backup.initialize(); backup.launch_automatic(); directorio.init_db()
     display_host="127.0.0.1" if HOST in {"0.0.0.0","::"} else HOST; url=f"http://{display_host}:{PORT}"
     print(f"Data directory: {database.DATA_DIR}")
     try: server=SingleInstanceHTTPServer((HOST,PORT),Handler)
