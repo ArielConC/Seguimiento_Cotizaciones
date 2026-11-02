@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Quotation Follow-up | NT Tool</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261007.2">
+  <link rel="stylesheet" href="/static/styles.css?v=20261102.1">
 </head>
 <body>
   <div id="app" class="app-shell hidden">
@@ -213,7 +213,7 @@
     </div>
   </form>
 </dialog>
-  <script src="/static/app.js?v=20261102.2" defer></script>
+  <script src="/static/app.js?v=20261102.3" defer></script>
   <!-- DIALOG: ESCANEO DE TARJETAS CON IA -->
   <dialog id="dialog-scan-card" class="wide-dialog">
     <div class="dialog-content">
@@ -233,8 +233,8 @@
             <p>Soporta fotos tomadas directo desde la cámara del celular o archivos JPG, PNG, WEBP</p>
             <div class="scan-btn-row">
               <label class="button primary scan-file-label">
-                📁 Seleccionar imagen
-                <input id="scan-file-input" type="file" accept="image/*" class="hidden">
+                📁 Seleccionar imágenes (1 o varias)
+                <input id="scan-file-input" type="file" accept="image/*" multiple class="hidden">
               </label>
               <label class="button ghost scan-file-label">
                 📷 Tomar con Cámara
@@ -245,6 +245,23 @@
           <div id="scan-preview-wrap" class="scan-preview-wrap hidden">
             <img id="scan-preview-img" alt="Tarjeta escaneada">
             <button id="scan-remove-img" type="button" class="button ghost danger-btn">Cambiar Imagen</button>
+          </div>
+          <div id="scan-batch-wrap" class="scan-batch-wrap hidden">
+            <div class="batch-header">
+              <span class="badge-empresa" id="batch-count-badge">0 seleccionadas</span>
+              <h4 id="batch-count-title" style="margin: 6px 0 2px;">Lote de Tarjetas</h4>
+              <p style="margin:0; font-size:12px; color:var(--muted);">Las tarjetas se procesarán en cola inteligente y se guardarán automáticamente con su foto original.</p>
+            </div>
+            <div id="batch-progress-box" class="batch-progress-box hidden">
+              <div class="batch-progress-bar-bg">
+                <div id="batch-progress-bar-fill" class="batch-progress-bar-fill" style="width: 0%;"></div>
+              </div>
+              <p id="batch-status-text" style="font-size:12px; margin: 6px 0 0; color:#4338ca; font-weight:600;">Iniciando procesamiento...</p>
+            </div>
+            <div id="batch-thumbnails-grid" class="batch-thumbnails-grid"></div>
+            <div style="margin-top: 12px; text-align: center;">
+              <button id="batch-cancel-btn" type="button" class="button ghost danger-btn" style="font-size:12px;">Cambiar Selección</button>
+            </div>
           </div>
         </div>
 
@@ -257,6 +274,9 @@
         </div>
 
         <div class="dialog-actions-row">
+          <button id="btn-start-batch-scan" type="button" class="button primary btn-scan-ai hidden">
+            🚀 Procesar Lote de Tarjetas
+          </button>
           <button id="btn-start-ai-scan" type="button" class="button primary btn-scan-ai" disabled>
             ⚡ Extraer Datos con IA
           </button>
@@ -310,10 +330,18 @@
           <span>Teléfono Secundario / Oficina</span>
           <input id="contact-tel2" placeholder="Ej. +52 477 987 6543 ext 102">
         </label>
-        <label class="form-full">
-          <span>Ubicación / Ciudad / País</span>
-          <input id="contact-ubicacion-texto" placeholder="Ej. León, Guanajuato, México" list="datalist-ubicaciones">
+                <label>
+          <span>Ubicación (Ciudad / Estado / País)</span>
+          <input id="contact-ubicacion-texto" placeholder="Ej. Querétaro, Qro. / Monterrey, N.L." list="datalist-ubicaciones">
           <datalist id="datalist-ubicaciones"></datalist>
+        </label>
+        <label>
+          <span>Tipo de Ubicación *</span>
+          <div class="toggle-ubi-segmented">
+            <button type="button" id="btn-ubi-nacional" class="btn-toggle-ubi active" data-type="Nacional">🇲🇽 Nacional</button>
+            <button type="button" id="btn-ubi-internacional" class="btn-toggle-ubi" data-type="Internacional">🌐 Internacional</button>
+          </div>
+          <input type="hidden" id="contact-ubicacion-tipo" value="Nacional">
         </label>
         <label class="form-full">
           <span>Dirección Física</span>

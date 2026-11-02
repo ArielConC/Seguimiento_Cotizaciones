@@ -85,6 +85,20 @@ def init_db() -> None:
             db.execute("ALTER TABLE directorio_contactos ADD COLUMN foto_tarjeta TEXT")
         except Exception:
             pass
+        try:
+            db.execute("ALTER TABLE directorio_contactos ADD COLUMN ubicacion_tipo TEXT NOT NULL DEFAULT 'Nacional'")
+        except Exception:
+            pass
+        try:
+            db.execute(
+                """
+                UPDATE directorio_contactos
+                SET ubicacion_tipo = 'Nacional'
+                WHERE ubicacion_tipo IS NULL OR ubicacion_tipo = '' OR ubicacion_tipo NOT IN ('Nacional', 'Internacional')
+                """
+            )
+        except Exception:
+            pass
     _maybe_migrate_legacy_data()
     sync_missing_catalogs_from_contacts()
 
@@ -250,7 +264,7 @@ def list_contacts(search: str = "", empresa: str = "", tipo_ubicacion: str = "")
                         ELSE c.ubicacion_texto
                    END, ''
                ) AS ubicacion_display,
-               COALESCE(u.tipo, '') AS ubicacion_tipo
+               COALESCE(NULLIF(c.ubicacion_tipo, ''), u.tipo, 'Nacional') AS ubicacion_tipo
         FROM directorio_contactos c
         LEFT JOIN directorio_empresas e ON c.id_empresa = e.id_empresa
         LEFT JOIN directorio_ubicaciones u ON c.id_ubicacion = u.id_ubicacion
@@ -263,7 +277,7 @@ def list_contacts(search: str = "", empresa: str = "", tipo_ubicacion: str = "")
         params.extend([empresa, empresa])
 
     if tipo_ubicacion and tipo_ubicacion != "Todos":
-        sql += " AND u.tipo = ?"
+        sql += " AND COALESCE(NULLIF(c.ubicacion_tipo, ''), u.tipo, 'Nacional') = ?"
         params.append(tipo_ubicacion)
 
     sql += " ORDER BY c.nombre_completo ASC"
@@ -293,7 +307,8 @@ def get_contact(id_contacto: int) -> dict[str, Any] | None:
                             THEN u.estado || ', ' || u.pais
                             ELSE c.ubicacion_texto
                        END, ''
-                   ) AS ubicacion_display
+                   ) AS ubicacion_display,
+                   COALESCE(NULLIF(c.ubicacion_tipo, ''), u.tipo, 'Nacional') AS ubicacion_tipo
             FROM directorio_contactos c
             LEFT JOIN directorio_empresas e ON c.id_empresa = e.id_empresa
             LEFT JOIN directorio_ubicaciones u ON c.id_ubicacion = u.id_ubicacion
@@ -332,6 +347,16 @@ def save_contact(payload: dict[str, Any]) -> dict[str, Any]:
     direccion = str(payload.get("direccion", "")).strip()
     notas = str(payload.get("notas", "")).strip()
     foto_tarjeta = str(payload.get("foto_tarjeta", "")).strip()
+    ubicacion_tipo = str(payload.get("ubicacion_tipo", "")).strip()
+    if ubicacion_tipo not in ("Nacional", "Internacional"):
+        raw_u = (ubicacion_texto or "").lower()
+        if any(t in raw_u for t in ["méxico", "mexico", "nuevo león", "monterrey", "querétaro", "queretaro", "qro", "guadalajara", "cdmx", "león", "leon", "gto", "nl", "mx"]):
+            ubicacion_tipo = "Nacional"
+        elif any(t in raw_u for t in ["usa", "united states", "japan", "germany", "china", "canada"]):
+            ubicacion_tipo = "Internacional"
+        else:
+            ubicacion_tipo = "Nacional"
+
     origen = str(payload.get("origen", "manual")).strip()
 
     now = _now_iso()
@@ -420,7 +445,7 @@ def save_contact(payload: dict[str, Any]) -> dict[str, Any]:
                 UPDATE directorio_contactos SET
                     nombre_completo = ?, puesto = ?, correo = ?, telefono = ?, telefono_2 = ?,
                     id_empresa = ?, empresa_nombre = ?, id_ubicacion = ?, ubicacion_texto = ?,
-                    sitio_web = ?, direccion = ?, notas = ?,
+                    ubicacion_tipo = ?, sitio_web = ?, direccion = ?, notas = ?,
                     foto_tarjeta = CASE WHEN ? != '' THEN ? ELSE foto_tarjeta END,
                     updated_at = ?
                 WHERE id_contacto = ?
@@ -428,7 +453,7 @@ def save_contact(payload: dict[str, Any]) -> dict[str, Any]:
                 (
                     nombre, puesto, correo, telefono, telefono_2,
                     id_empresa, empresa_nombre, id_ubicacion, ubicacion_texto,
-                    sitio_web, direccion, notas, foto_tarjeta, foto_tarjeta,
+                    ubicacion_tipo, sitio_web, direccion, notas, foto_tarjeta, foto_tarjeta,
                     now, int(id_contacto)
                 ),
             )
@@ -439,13 +464,13 @@ def save_contact(payload: dict[str, Any]) -> dict[str, Any]:
                 INSERT INTO directorio_contactos (
                     nombre_completo, puesto, correo, telefono, telefono_2,
                     id_empresa, empresa_nombre, id_ubicacion, ubicacion_texto,
-                    sitio_web, direccion, notas, foto_tarjeta, origen, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ubicacion_tipo, sitio_web, direccion, notas, foto_tarjeta, origen, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     nombre, puesto, correo, telefono, telefono_2,
                     id_empresa, empresa_nombre, id_ubicacion, ubicacion_texto,
-                    sitio_web, direccion, notas, foto_tarjeta, origen, now, now
+                    ubicacion_tipo, sitio_web, direccion, notas, foto_tarjeta, origen, now, now
                 ),
             )
             saved_id = cur.lastrowid

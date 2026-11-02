@@ -153,3 +153,12 @@ tr.tracking-orange:hover{background:#ffe7c3}tr.tracking-red:hover{background:#ff
 
 .btn-act-photo { background: #059669; }
 .photo-viewer-dialog { max-width: 800px; width: 95vw; }
+/* Selector Segmentado Nacional / Internacional */
+.toggle-ubi-segmented { display: flex; gap: 6px; margin-top: 4px; }
+.btn-toggle-ubi { flex: 1; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: #475569; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.btn-toggle-ubi:hover { background: #f8fafc; border-color: #94a3b8; }
+.btn-toggle-ubi.active[data-type="Nacional"] { background: #eff6ff; color: #1d4ed8; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
+.btn-toggle-ubi.active[data-type="Internacional"] { background: #f0fdf4; color: #15803d; border-color: #22c55e; box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2); }
+
+.badge-ubi.nacional { background: #eff6ff; color: #1d4ed8; font-weight: 700; }
+.badge-ubi.internacional { background: #f0fdf4; color: #15803d; font-weight: 700; }

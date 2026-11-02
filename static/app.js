@@ -860,7 +860,10 @@ function filterAndDisplayDirectorio() {
 
   const filtered = state.directorio.contacts.filter(c => {
     if (filterEmp && (c.empresa_display !== filterEmp && c.empresa_nombre !== filterEmp)) return false;
-    if (filterUbi && c.ubicacion_tipo && c.ubicacion_tipo !== filterUbi) return false;
+        if (filterUbi && filterUbi !== 'Todos') {
+      const uType = c.ubicacion_tipo || 'Nacional';
+      if (uType !== filterUbi) return false;
+    }
     if (query) {
       const blob = `${c.nombre_completo || ''} ${c.puesto || ''} ${c.correo || ''} ${c.telefono || ''} ${c.telefono_2 || ''} ${c.empresa_display || ''} ${c.ubicacion_display || ''}`.toLowerCase();
       if (!blob.includes(query)) return false;
@@ -910,7 +913,7 @@ function renderDirectorioCards(contacts) {
               <p class="contact-puesto">${esc(c.puesto || 'Puesto no asignado')}</p>
               <div class="contact-badges">
                 ${c.empresa_display ? `<span class="badge-empresa">🏢 ${esc(c.empresa_display)}</span>` : ''}
-                ${c.ubicacion_display ? `<span class="badge-ubi">📍 ${esc(c.ubicacion_display)}</span>` : ''}
+                ${c.ubicacion_tipo ? `<span class="badge-ubi ${c.ubicacion_tipo.toLowerCase()}">${c.ubicacion_tipo === "Nacional" ? "🇲🇽 Nacional" : "🌐 Internacional"}</span>` : ""}${c.ubicacion_display ? `<span class="badge-ubi">📍 ${esc(c.ubicacion_display)}</span>` : ""}
               </div>
             </div>
           </div>
@@ -1021,6 +1024,7 @@ function openEditContact(id) {
   $('#contact-tel1').value = c.telefono || '';
   $('#contact-tel2').value = c.telefono_2 || '';
   $('#contact-ubicacion-texto').value = c.ubicacion_display || c.ubicacion_texto || '';
+  setContactUbiType(c.ubicacion_tipo || 'Nacional');
   $('#contact-direccion').value = c.direccion || '';
   $('#contact-notas').value = c.notas || '';
 
@@ -1096,11 +1100,31 @@ if (btnNewContact) {
     $('#contact-id').value = '';
     $('#contact-dialog-title').textContent = 'Nuevo Contacto';
     $('#form-contacto').reset();
+    setContactUbiType('Nacional');
     $('#dialog-contacto').showModal();
   });
 }
 
 // Envío del Formulario de Contacto
+function setContactUbiType(type = 'Nacional') {
+  const norm = type === 'Internacional' ? 'Internacional' : 'Nacional';
+  const input = $('#contact-ubicacion-tipo');
+  if (input) input.value = norm;
+  const btnNac = $('#btn-ubi-nacional');
+  const btnInt = $('#btn-ubi-internacional');
+  if (btnNac && btnInt) {
+    btnNac.classList.toggle('active', norm === 'Nacional');
+    btnInt.classList.toggle('active', norm === 'Internacional');
+  }
+}
+
+const btnUbiNac = $('#btn-ubi-nacional');
+const btnUbiInt = $('#btn-ubi-internacional');
+if (btnUbiNac && btnUbiInt) {
+  btnUbiNac.addEventListener('click', (e) => { e.preventDefault(); setContactUbiType('Nacional'); });
+  btnUbiInt.addEventListener('click', (e) => { e.preventDefault(); setContactUbiType('Internacional'); });
+}
+
 const formContacto = $('#form-contacto');
 if (formContacto) {
   formContacto.addEventListener('submit', async (e) => {
@@ -1115,6 +1139,7 @@ if (formContacto) {
       telefono: $('#contact-tel1').value,
       telefono_2: $('#contact-tel2').value,
       ubicacion_texto: $('#contact-ubicacion-texto').value,
+        ubicacion_tipo: $('#contact-ubicacion-tipo')?.value || 'Nacional',
       direccion: $('#contact-direccion').value,
       notas: $('#contact-notas').value
     };
