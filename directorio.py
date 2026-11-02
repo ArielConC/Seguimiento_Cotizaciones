@@ -423,9 +423,9 @@ def scan_card_ai(image_base64: str, mime_type: str = "image/jpeg") -> dict[str, 
         "Si algún campo no aparece en la tarjeta, déjalo como cadena vacía ''. No inventes datos."
     )
 
-    # Modelos a intentar en orden de preferencia si alguno sufre saturación o indisponibilidad
+    # Intentar primero con gemini-3.8-flash (habilitado para la cuenta) y respaldos
     preferred_model = os.environ.get("GEMINI_MODEL", "").strip()
-    candidate_models = [m for m in [preferred_model, "gemini-2.0-flash", "gemini-1.5-flash", "gemini-3.8-flash"] if m]
+    candidate_models = [m for m in [preferred_model, "gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"] if m]
     # Deduplicar manteniendo orden
     models_to_try = []
     for m in candidate_models:
@@ -452,6 +452,7 @@ def scan_card_ai(image_base64: str, mime_type: str = "image/jpeg") -> dict[str, 
             "generationConfig": {
                 "response_mime_type": "application/json",
                 "temperature": 0.1,
+                "maxOutputTokens": 800,
             },
         }
 
@@ -463,7 +464,7 @@ def scan_card_ai(image_base64: str, mime_type: str = "image/jpeg") -> dict[str, 
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=75) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 content_text = data["candidates"][0]["content"]["parts"][0]["text"]
                 parsed_json = json.loads(content_text)
