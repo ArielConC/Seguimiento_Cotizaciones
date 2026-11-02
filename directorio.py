@@ -5,6 +5,7 @@ import json
 import os
 import re
 import sqlite3
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -422,49 +423,74 @@ def scan_card_ai(image_base64: str, mime_type: str = "image/jpeg") -> dict[str, 
         "Si algún campo no aparece en la tarjeta, déjalo como cadena vacía ''. No inventes datos."
     )
 
-    model_name = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash").strip()
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-    req_body = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": prompt},
-                    {
-                        "inline_data": {
-                            "mime_type": mime_type,
-                            "data": image_base64,
-                        }
-                    },
-                ]
-            }
-        ],
-        "generationConfig": {
-            "response_mime_type": "application/json",
-            "temperature": 0.1,
-        },
-    }
+    # Modelos a intentar en orden de preferencia si alguno sufre saturación o indisponibilidad
+    preferred_model = os.environ.get("GEMINI_MODEL", "").strip()
+    candidate_models = [m for m in [preferred_model, "gemini-2.0-flash", "gemini-1.5-flash", "gemini-3.8-flash"] if m]
+    # Deduplicar manteniendo orden
+    models_to_try = []
+    for m in candidate_models:
+        if m not in models_to_try:
+            models_to_try.append(m)
 
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(req_body).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+    last_error_msg = ""
+    for idx, model_name in enumerate(models_to_try):
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+        req_body = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": prompt},
+                        {
+                            "inline_data": {
+                                "mime_type": mime_type,
+                                "data": image_base64,
+                            }
+                        },
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "response_mime_type": "application/json",
+                "temperature": 0.1,
+            },
+        }
 
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            content_text = data["candidates"][0]["content"]["parts"][0]["text"]
-            parsed_json = json.loads(content_text)
-            return {"ok": True, "extracted": parsed_json}
-    except urllib.error.HTTPError as exc:
-        err_msg = exc.read().decode("utf-8", errors="replace")
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(req_body).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
         try:
-            err_json = json.loads(err_msg)
-            msg = err_json.get("error", {}).get("message", err_msg)
-        except Exception:
-            msg = err_msg
-        raise RuntimeError(f"Error en la API de Gemini: {msg}") from exc
-    except Exception as exc:
-        raise RuntimeError(f"Error al procesar la tarjeta con IA: {exc}") from exc
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                content_text = data["candidates"][0]["content"]["parts"][0]["text"]
+                parsed_json = json.loads(content_text)
+                return {"ok": True, "extracted": parsed_json, "model_used": model_name}
+        except urllib.error.HTTPError as exc:
+            err_msg = exc.read().decode("utf-8", errors="replace")
+            try:
+                err_json = json.loads(err_msg)
+                msg = err_json.get("error", {}).get("message", err_msg)
+            except Exception:
+                msg = err_msg
+            last_error_msg = msg
+
+            # Si es saturación (503 / high demand / overloaded), cuota (429) o modelo no disponible, intentar con el siguiente modelo
+            is_retriable = exc.code in (503, 429, 404) or any(
+                term in msg.lower() for term in ["high demand", "overloaded", "temporarily", "not available", "quota"]
+            )
+            if is_retriable and idx < len(models_to_try) - 1:
+                time.sleep(0.5)
+                continue
+            raise RuntimeError(f"Error en la API de Gemini ({model_name}): {msg}") from exc
+        except Exception as exc:
+            last_error_msg = str(exc)
+            if idx < len(models_to_try) - 1:
+                time.sleep(0.5)
+                continue
+            raise RuntimeError(f"Error al procesar la tarjeta con IA ({model_name}): {exc}") from exc
+
+    raise RuntimeError(f"No fue posible contactar a Gemini con ningún modelo disponible: {last_error_msg}")
 
