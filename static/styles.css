@@ -222,3 +222,16 @@ tr.tracking-orange:hover{background:#ffe7c3}tr.tracking-red:hover{background:#ff
   padding: 4px;
   background: #fff;
 }
+
+/* Modal de confirmación en pantalla */
+.confirm-dialog::backdrop {
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(3px);
+}
+.confirm-dialog {
+  animation: modalScaleIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes modalScaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}

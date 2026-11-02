@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Quotation Follow-up | NT Tool</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20261102.11">
+  <link rel="stylesheet" href="/static/styles.css?v=20261102.12">
 </head>
 <body>
   <div id="app" class="app-shell hidden">
@@ -216,7 +216,7 @@
     </div>
   </form>
 </dialog>
-  <script src="/static/app.js?v=20261102.11" defer></script>
+  <script src="/static/app.js?v=20261102.12" defer></script>
   <!-- DIALOG: ESCANEO DE TARJETAS CON IA -->
   <dialog id="dialog-scan-card" class="wide-dialog">
     <div class="dialog-content">
@@ -513,5 +513,25 @@
       </div>
     </div>
   </dialog>
+
+  <!-- DIALOG: CONFIRMACIÓN EN PANTALLA (MODAL CUSTOM) -->
+  <dialog id="dialog-confirm-action" class="confirm-dialog" style="max-width: 440px; border-radius: 14px; border: 1px solid var(--line); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2), 0 10px 10px -5px rgba(0,0,0,0.1); padding: 0; overflow: hidden;">
+    <div class="dialog-content" style="padding: 24px;">
+      <div style="display: flex; align-items: flex-start; gap: 16px;">
+        <div style="width: 44px; height: 44px; border-radius: 50%; background: #fee2e2; color: #dc2626; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0;">
+          ⚠️
+        </div>
+        <div style="flex: 1;">
+          <h3 id="confirm-dialog-title" style="margin: 0 0 6px; font-size: 1.15rem; color: #0f172a; font-weight: 700;">¿Estás seguro?</h3>
+          <p id="confirm-dialog-message" style="margin: 0; font-size: 13.5px; line-height: 1.5; color: #475569;"></p>
+        </div>
+      </div>
+      <div class="dialog-actions-row" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px;">
+        <button type="button" id="confirm-dialog-cancel" class="button ghost">Cancelar</button>
+        <button type="button" id="confirm-dialog-ok" class="button danger-btn">Confirmar</button>
+      </div>
+    </div>
+  </dialog>
+
 </body>
 </html>

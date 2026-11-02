@@ -1156,15 +1156,66 @@ function openEditContact(id) {
   $('#dialog-contacto').showModal();
 }
 
+function confirmAction({ title = '¿Estás seguro?', message = '', confirmText = 'Confirmar', danger = false }) {
+  return new Promise((resolve) => {
+    const dialog = $('#dialog-confirm-action');
+    if (!dialog) {
+      resolve(true);
+      return;
+    }
+    const titleEl = $('#confirm-dialog-title');
+    const msgEl = $('#confirm-dialog-message');
+    if (titleEl) titleEl.textContent = title;
+    if (msgEl) msgEl.innerHTML = message;
+
+    const btnConfirm = $('#confirm-dialog-ok');
+    const btnCancel = $('#confirm-dialog-cancel');
+
+    if (btnConfirm) {
+      btnConfirm.textContent = confirmText;
+      btnConfirm.className = danger ? 'button danger-btn' : 'button primary';
+    }
+
+    const handleConfirm = () => {
+      cleanup();
+      dialog.close();
+      resolve(true);
+    };
+    const handleCancel = () => {
+      cleanup();
+      dialog.close();
+      resolve(false);
+    };
+
+    function cleanup() {
+      btnConfirm?.removeEventListener('click', handleConfirm);
+      btnCancel?.removeEventListener('click', handleCancel);
+      dialog.removeEventListener('cancel', handleCancel);
+    }
+
+    btnConfirm?.addEventListener('click', handleConfirm);
+    btnCancel?.addEventListener('click', handleCancel);
+    dialog.addEventListener('cancel', handleCancel);
+
+    dialog.showModal();
+  });
+}
+
 async function confirmDeleteContact(id) {
   const c = state.directorio.contacts.find(x => x.id_contacto === id);
   const name = c ? c.nombre_completo : 'este contacto';
-  const ask = window['con' + 'firm'];
-  if (typeof ask === 'function' && !ask(`¿Estás seguro de que deseas eliminar a ${name}? Esta acción no se puede deshacer.`)) return;
+
+  const confirmed = await confirmAction({
+    title: '¿Eliminar Contacto?',
+    message: `¿Estás seguro de que deseas eliminar a <strong>${esc(name)}</strong>?<br><span style="color:var(--muted); font-size:12px; display:inline-block; margin-top:4px;">Esta acción no se puede deshacer.</span>`,
+    confirmText: '🗑️ Sí, Eliminar',
+    danger: true
+  });
+  if (!confirmed) return;
 
   try {
     await api(`/api/directorio/contactos/${id}/delete`, { method: 'POST' });
-    toast('Contacto eliminado');
+    toast('Contacto eliminado exitosamente');
     await renderDirectorio();
   } catch (err) {
     toast(err.message, true);
