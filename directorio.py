@@ -81,6 +81,73 @@ def init_db() -> None:
             """
         )
     _maybe_migrate_legacy_data()
+    sync_missing_catalogs_from_contacts()
+
+
+def sync_missing_catalogs_from_contacts() -> None:
+    now = _now_iso()
+    try:
+        with database.connect() as db:
+            # Sincronizar empresas de contactos ya existentes
+            rows = db.execute(
+                """
+                SELECT DISTINCT empresa_nombre
+                FROM directorio_contactos
+                WHERE empresa_nombre IS NOT NULL AND TRIM(empresa_nombre) != ''
+                """
+            ).fetchall()
+            for r in rows:
+                name = str(r["empresa_nombre"]).strip()
+                if not name:
+                    continue
+                exists = db.execute(
+                    "SELECT 1 FROM directorio_empresas WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))",
+                    (name,)
+                ).fetchone()
+                if not exists:
+                    try:
+                        db.execute(
+                            "INSERT INTO directorio_empresas (nombre, sector, created_at) VALUES (?, ?, ?)",
+                            (name, "", now),
+                        )
+                    except Exception:
+                        pass
+
+            # Sincronizar ubicaciones de contactos ya existentes
+            ubi_rows = db.execute(
+                """
+                SELECT DISTINCT ubicacion_texto
+                FROM directorio_contactos
+                WHERE ubicacion_texto IS NOT NULL AND TRIM(ubicacion_texto) != ''
+                """
+            ).fetchall()
+            for r in ubi_rows:
+                raw = str(r["ubicacion_texto"]).strip()
+                if not raw:
+                    continue
+                parts = [p.strip() for p in raw.split(",") if p.strip()]
+                if len(parts) >= 2:
+                    estado, pais = parts[-2], parts[-1]
+                else:
+                    estado, pais = parts[0], "México"
+                pais_norm = pais.lower().replace("é", "e")
+                tipo = "Nacional" if pais_norm in ("mexico", "mx", "") or "mexico" in pais_norm else "Internacional"
+                if tipo == "Nacional":
+                    pais = "México"
+                exists = db.execute(
+                    "SELECT 1 FROM directorio_ubicaciones WHERE LOWER(TRIM(estado)) = LOWER(TRIM(?)) AND LOWER(TRIM(pais)) = LOWER(TRIM(?))",
+                    (estado, pais),
+                ).fetchone()
+                if not exists:
+                    try:
+                        db.execute(
+                            "INSERT INTO directorio_ubicaciones (tipo, pais, estado, created_at) VALUES (?, ?, ?, ?)",
+                            (tipo, pais, estado, now),
+                        )
+                    except Exception:
+                        pass
+    except Exception as exc:
+        print(f"[Directorio] Sincronización inicial de catálogos omitida/advertencia: {exc}")
 
 
 def _maybe_migrate_legacy_data() -> None:
@@ -264,11 +331,82 @@ def save_contact(payload: dict[str, Any]) -> dict[str, Any]:
     now = _now_iso()
 
     with database.connect() as db:
-        # Si se especificó nombre de empresa pero no id, buscar o crear
-        if empresa_nombre and not id_empresa:
-            emp_row = db.execute("SELECT id_empresa FROM directorio_empresas WHERE LOWER(nombre) = LOWER(?)", (empresa_nombre,)).fetchone()
+        # 1. EMPRESA: Buscar o crear automáticamente en el catálogo
+        if empresa_nombre:
+            emp_row = db.execute(
+                "SELECT id_empresa, nombre FROM directorio_empresas WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))",
+                (empresa_nombre,),
+            ).fetchone()
             if emp_row:
                 id_empresa = emp_row["id_empresa"]
+                empresa_nombre = emp_row["nombre"]
+            else:
+                try:
+                    db.execute(
+                        "INSERT INTO directorio_empresas (nombre, sector, created_at) VALUES (?, ?, ?)",
+                        (empresa_nombre, "", now),
+                    )
+                    new_emp = db.execute(
+                        "SELECT id_empresa FROM directorio_empresas WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))",
+                        (empresa_nombre,),
+                    ).fetchone()
+                    if new_emp:
+                        id_empresa = new_emp["id_empresa"]
+                except Exception as exc:
+                    print(f"[Directorio] Auto-registro empresa omitido/existente: {exc}")
+
+        # 2. UBICACIÓN: Buscar o crear automáticamente en el catálogo
+        if ubicacion_texto:
+            ubi_row = db.execute(
+                """
+                SELECT id_ubicacion, pais, estado FROM directorio_ubicaciones
+                WHERE LOWER(?) LIKE '%' || LOWER(TRIM(estado)) || '%'
+                ORDER BY LENGTH(estado) DESC LIMIT 1
+                """,
+                (ubicacion_texto,),
+            ).fetchone()
+            if ubi_row:
+                id_ubicacion = ubi_row["id_ubicacion"]
+            else:
+                parts = [p.strip() for p in ubicacion_texto.split(",") if p.strip()]
+                if len(parts) >= 2:
+                    posible_estado = parts[-2]
+                    posible_pais = parts[-1]
+                elif len(parts) == 1:
+                    posible_estado = parts[0]
+                    posible_pais = "México"
+                else:
+                    posible_estado = ""
+                    posible_pais = ""
+
+                if posible_estado:
+                    pais_norm = posible_pais.lower().replace("é", "e")
+                    if pais_norm in ("mexico", "mx", "") or "mexico" in pais_norm:
+                        tipo_ubi = "Nacional"
+                        posible_pais = "México"
+                    else:
+                        tipo_ubi = "Internacional"
+
+                    try:
+                        existing_ubi = db.execute(
+                            "SELECT id_ubicacion FROM directorio_ubicaciones WHERE LOWER(TRIM(estado)) = LOWER(TRIM(?)) AND LOWER(TRIM(pais)) = LOWER(TRIM(?))",
+                            (posible_estado, posible_pais),
+                        ).fetchone()
+                        if existing_ubi:
+                            id_ubicacion = existing_ubi["id_ubicacion"]
+                        else:
+                            db.execute(
+                                "INSERT INTO directorio_ubicaciones (tipo, pais, estado, created_at) VALUES (?, ?, ?, ?)",
+                                (tipo_ubi, posible_pais, posible_estado, now),
+                            )
+                            new_ubi = db.execute(
+                                "SELECT id_ubicacion FROM directorio_ubicaciones WHERE LOWER(TRIM(estado)) = LOWER(TRIM(?)) AND LOWER(TRIM(pais)) = LOWER(TRIM(?))",
+                                (posible_estado, posible_pais),
+                            ).fetchone()
+                            if new_ubi:
+                                id_ubicacion = new_ubi["id_ubicacion"]
+                    except Exception as exc:
+                        print(f"[Directorio] Auto-registro ubicación omitido/existente: {exc}")
 
         if id_contacto:
             db.execute(

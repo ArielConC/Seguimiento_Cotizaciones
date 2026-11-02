@@ -59,6 +59,19 @@ class TestDirectorio(unittest.TestCase):
         self.assertTrue(any(e["nombre"] == "Industrias XYZ Test" for e in cats["empresas"]))
         self.assertTrue(any(u["estado"] == "Sonora Test" for u in cats["ubicaciones"]))
 
+    def test_auto_register_catalogs_from_contact(self):
+        payload = {
+            "nombre_completo": "Ana Torres",
+            "empresa_nombre": "Empresa Automatica SA",
+            "ubicacion_texto": "Monterrey, Nuevo León, México",
+            "correo": "ana@auto.com",
+        }
+        res = directorio.save_contact(payload)
+        self.assertTrue(res["ok"])
+        cats = directorio.get_catalogs()
+        self.assertTrue(any(e["nombre"] == "Empresa Automatica SA" for e in cats["empresas"]))
+        self.assertTrue(any("Nuevo León" in u["estado"] for u in cats["ubicaciones"]))
+
 
 if __name__ == "__main__":
     unittest.main()

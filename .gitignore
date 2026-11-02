@@ -19,5 +19,6 @@ tmp/
 .vscode/
 .DS_Store
 Thumbs.db
+*.zip
 migration_package/
 
